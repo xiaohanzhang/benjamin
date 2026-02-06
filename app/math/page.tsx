@@ -5,5 +5,9 @@ export const metadata = {
 }
 
 export default function MathPage() {
-  return <MathGame />
+  return (
+    <div className="min-h-screen flex flex-col">
+      <MathGame />
+    </div>
+  )
 }

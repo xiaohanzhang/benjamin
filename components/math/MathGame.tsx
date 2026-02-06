@@ -16,7 +16,12 @@ import QuestionDisplay from './QuestionDisplay'
 import AnswerOptions from './AnswerOptions'
 import ProgressBar from './ProgressBar'
 import ScoreDisplay from './ScoreDisplay'
-import RewardAnimation, { generateRewardData, type ConfettiPiece } from './RewardAnimation'
+import {
+  ConfettiOverlay,
+  Encouragement,
+  generateRewardData,
+  type ConfettiPiece,
+} from './RewardAnimation'
 
 export default function MathGame() {
   const [gameState, setGameState] = useState<GameState | null>(null)
@@ -140,7 +145,6 @@ export default function MathGame() {
         setResults((r) => [...r, 'correct'])
         setPhase('correct')
 
-        // Generate reward data in event handler (pure-render safe)
         const reward = generateRewardData(newStreak)
         setRewardEncouragement(reward.encouragement)
         setRewardConfetti(reward.confettiPieces)
@@ -195,7 +199,6 @@ export default function MathGame() {
     }
 
     if (leveledUp) {
-      // Generate level-up reward data in event handler
       const reward = generateRewardData(bestStreak)
       setRewardEncouragement(reward.encouragement)
       setRewardConfetti(reward.confettiPieces)
@@ -219,7 +222,7 @@ export default function MathGame() {
   // Loading
   if (!gameState) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex flex-1 items-center justify-center">
         <div className="text-4xl animate-pulse">🎮 Loading...</div>
       </div>
     )
@@ -228,7 +231,7 @@ export default function MathGame() {
   // Idle screen
   if (phase === 'idle') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-6">
+      <div className="flex flex-col flex-1 items-center justify-center gap-8 p-6">
         <div className="text-center">
           <h1 className="text-4xl sm:text-5xl font-extrabold mb-2 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent">
             Math Game
@@ -264,12 +267,9 @@ export default function MathGame() {
     const accuracy = Math.round((correctCount / QUESTIONS_PER_ROUND) * 100)
 
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-6">
-        <RewardAnimation
-          show={phase === 'levelUp'}
-          encouragement={rewardEncouragement}
-          confettiPieces={rewardConfetti}
-        />
+      <div className="flex flex-col flex-1 items-center justify-center gap-6 p-6">
+        <ConfettiOverlay show={phase === 'levelUp'} pieces={rewardConfetti} />
+        <Encouragement show={phase === 'levelUp'} text={rewardEncouragement} />
 
         <h2 className="text-4xl font-extrabold text-center">
           {phase === 'levelUp' ? '🎊 Level Up! 🎊' : '🌟 All Done!'}
@@ -310,19 +310,27 @@ export default function MathGame() {
 
   // Active game (question / correct / incorrect)
   return (
-    <div className="min-h-screen flex flex-col items-center justify-between p-4 sm:p-6 gap-4">
-      <div className="w-full flex items-center justify-between">
+    <div className="flex flex-col flex-1 p-4 sm:p-6 gap-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
         <ScoreDisplay correct={correctCount} streak={streak} />
         <span className="text-sm text-gray-400 font-medium">
           {DIFFICULTY_LABELS[gameState.currentDifficulty]}
         </span>
       </div>
 
-      <ProgressBar current={questionIndex} results={results} />
+      {/* Progress */}
+      <div className="max-w-md w-full mx-auto">
+        <ProgressBar current={questionIndex} results={results} />
+      </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center gap-8">
+      {/* Question area — fills remaining space */}
+      <div className="flex flex-col flex-1 items-center justify-center gap-8">
+        <Encouragement show={phase === 'correct'} text={rewardEncouragement} />
+
         {currentQuestion && <QuestionDisplay question={currentQuestion} />}
 
+        {/* Feedback messages */}
         {phase === 'correct' && (
           <div className="text-3xl font-extrabold text-green-500 animate-bounce">
             {streak >= 3 ? 'On fire! 🔥' : 'Yes! ✨'}
@@ -334,6 +342,7 @@ export default function MathGame() {
           </div>
         )}
 
+        {/* Answer buttons */}
         {currentQuestion && (
           <AnswerOptions
             options={options}
@@ -349,11 +358,8 @@ export default function MathGame() {
         )}
       </div>
 
-      <RewardAnimation
-        show={phase === 'correct'}
-        encouragement={rewardEncouragement}
-        confettiPieces={rewardConfetti}
-      />
+      {/* Confetti overlay — only true viewport popup */}
+      <ConfettiOverlay show={phase === 'correct'} pieces={rewardConfetti} />
     </div>
   )
 }

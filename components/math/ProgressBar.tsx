@@ -9,7 +9,7 @@ interface ProgressBarProps {
 
 export default function ProgressBar({ current, results }: ProgressBarProps) {
   return (
-    <div className="w-full max-w-md mx-auto">
+    <div className="w-full">
       <div className="flex gap-1.5">
         {Array.from({ length: QUESTIONS_PER_ROUND }, (_, i) => {
           const status = results[i] ?? 'pending'

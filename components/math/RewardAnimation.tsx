@@ -45,18 +45,19 @@ export function generateRewardData(streak: number) {
   return { encouragement, confettiPieces }
 }
 
-interface RewardAnimationProps {
+// --- Confetti: full-viewport overlay (the one legitimate fixed-position case) ---
+
+interface ConfettiOverlayProps {
   show: boolean
-  encouragement: string
-  confettiPieces: ConfettiPiece[]
+  pieces: ConfettiPiece[]
 }
 
-export default function RewardAnimation({ show, encouragement, confettiPieces }: RewardAnimationProps) {
+export function ConfettiOverlay({ show, pieces }: ConfettiOverlayProps) {
   if (!show) return null
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50">
-      {confettiPieces.map((piece) => (
+      {pieces.map((piece) => (
         <div
           key={piece.id}
           className={`absolute rounded-full ${piece.color} animate-confetti`}
@@ -69,12 +70,23 @@ export default function RewardAnimation({ show, encouragement, confettiPieces }:
           }}
         />
       ))}
+    </div>
+  )
+}
 
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="text-5xl sm:text-6xl font-extrabold animate-reward-text drop-shadow-lg">
-          {encouragement}
-        </div>
-      </div>
+// --- Encouragement: normal-flow inline element ---
+
+interface EncouragementProps {
+  show: boolean
+  text: string
+}
+
+export function Encouragement({ show, text }: EncouragementProps) {
+  if (!show) return null
+
+  return (
+    <div className="text-5xl sm:text-6xl font-extrabold animate-reward-text drop-shadow-lg text-center">
+      {text}
     </div>
   )
 }
