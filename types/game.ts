@@ -12,6 +12,12 @@ export interface MathQuestion {
   difficulty: DifficultyLevel
 }
 
+export interface QuestionRecord {
+  question: MathQuestion
+  userAnswer: number
+  isCorrect: boolean
+}
+
 export interface WrongAnswerRecord {
   questionKey: string // e.g. "3+5" for deduplication
   question: MathQuestion

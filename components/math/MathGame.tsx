@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, startTransition } from 'react'
-import type { MathQuestion, GamePhase, GameState } from '@/types/game'
+import type { MathQuestion, GamePhase, GameState, QuestionRecord } from '@/types/game'
 import { QUESTIONS_PER_ROUND } from '@/types/game'
 import { generateQuestion, generateOptions, questionKey } from '@/lib/math/questionGenerator'
 import { adjustDifficulty, DIFFICULTY_LABELS } from '@/lib/math/difficultyManager'
@@ -22,6 +22,7 @@ import {
   generateRewardData,
   type ConfettiPiece,
 } from './RewardAnimation'
+import QuestionHistory from './QuestionHistory'
 
 export default function MathGame() {
   const [gameState, setGameState] = useState<GameState | null>(null)
@@ -37,6 +38,8 @@ export default function MathGame() {
   const [isReviewQuestion, setIsReviewQuestion] = useState(false)
   const [roundStartTime, setRoundStartTime] = useState(0)
   const [roundElapsed, setRoundElapsed] = useState(0)
+
+  const [questionHistory, setQuestionHistory] = useState<QuestionRecord[]>([])
 
   // Pre-generated reward data (set in event handlers, not render)
   const [rewardEncouragement, setRewardEncouragement] = useState('')
@@ -125,6 +128,7 @@ export default function MathGame() {
     setStreak(0)
     setBestStreak(0)
     setResults([])
+    setQuestionHistory([])
     setRoundStartTime(Date.now())
 
     showQuestion(newState, 0, revQueue, revIndices)
@@ -136,6 +140,7 @@ export default function MathGame() {
 
       setSelectedAnswer(answer)
       const isCorrect = answer === currentQuestion.correctAnswer
+      setQuestionHistory((prev) => [...prev, { question: currentQuestion, userAnswer: answer, isCorrect }])
 
       if (isCorrect) {
         const newStreak = streak + 1
@@ -310,52 +315,61 @@ export default function MathGame() {
 
   // Active game (question / correct / incorrect)
   return (
-    <div className="flex flex-col flex-1 p-4 sm:p-6 gap-4">
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <ScoreDisplay correct={correctCount} streak={streak} />
-        <span className="text-sm text-gray-400 font-medium">
-          {DIFFICULTY_LABELS[gameState.currentDifficulty]}
-        </span>
-      </div>
+    <div className="flex flex-1 p-4 sm:p-6 gap-4">
+      {/* Left: question history panel (hidden on small screens) */}
+      <aside className="hidden md:flex w-48 shrink-0 flex-col overflow-y-auto rounded-2xl bg-white/60 p-3 shadow-inner">
+        <h3 className="text-xs font-bold text-gray-400 uppercase mb-2">History</h3>
+        <QuestionHistory history={questionHistory} />
+      </aside>
 
-      {/* Progress */}
-      <div className="max-w-md w-full mx-auto">
-        <ProgressBar current={questionIndex} results={results} />
-      </div>
+      {/* Right: main game area */}
+      <div className="flex flex-col flex-1 gap-4">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <ScoreDisplay correct={correctCount} streak={streak} />
+          <span className="text-sm text-gray-400 font-medium">
+            {DIFFICULTY_LABELS[gameState.currentDifficulty]}
+          </span>
+        </div>
 
-      {/* Question area — fills remaining space */}
-      <div className="flex flex-col flex-1 items-center justify-center gap-8">
-        <Encouragement show={phase === 'correct'} text={rewardEncouragement} />
+        {/* Progress */}
+        <div className="max-w-md w-full mx-auto">
+          <ProgressBar current={questionIndex} results={results} />
+        </div>
 
-        {currentQuestion && <QuestionDisplay question={currentQuestion} />}
+        {/* Question area — fills remaining space */}
+        <div className="flex flex-col flex-1 items-center justify-center gap-8">
+          <Encouragement show={phase === 'correct'} text={rewardEncouragement} />
 
-        {/* Feedback messages */}
-        {phase === 'correct' && (
-          <div className="text-3xl font-extrabold text-green-500 animate-bounce">
-            {streak >= 3 ? 'On fire! 🔥' : 'Yes! ✨'}
-          </div>
-        )}
-        {phase === 'incorrect' && currentQuestion && (
-          <div className="text-2xl font-bold text-orange-500 animate-pulse">
-            Good try! It&apos;s <span className="text-green-600 text-3xl">{currentQuestion.correctAnswer}</span>
-          </div>
-        )}
+          {currentQuestion && <QuestionDisplay question={currentQuestion} />}
 
-        {/* Answer buttons */}
-        {currentQuestion && (
-          <AnswerOptions
-            options={options}
-            onSelect={handleAnswer}
-            disabled={phase !== 'question'}
-            correctAnswer={phase !== 'question' ? currentQuestion.correctAnswer : null}
-            selectedAnswer={selectedAnswer}
-          />
-        )}
+          {/* Feedback messages */}
+          {phase === 'correct' && (
+            <div className="text-3xl font-extrabold text-green-500 animate-bounce">
+              {streak >= 3 ? 'On fire! 🔥' : 'Yes! ✨'}
+            </div>
+          )}
+          {phase === 'incorrect' && currentQuestion && (
+            <div className="text-2xl font-bold text-orange-500 animate-pulse">
+              Good try! It&apos;s <span className="text-green-600 text-3xl">{currentQuestion.correctAnswer}</span>
+            </div>
+          )}
 
-        {isReviewQuestion && phase === 'question' && (
-          <div className="text-sm text-purple-400 font-medium">📝 Review</div>
-        )}
+          {/* Answer buttons */}
+          {currentQuestion && (
+            <AnswerOptions
+              options={options}
+              onSelect={handleAnswer}
+              disabled={phase !== 'question'}
+              correctAnswer={phase !== 'question' ? currentQuestion.correctAnswer : null}
+              selectedAnswer={selectedAnswer}
+            />
+          )}
+
+          {isReviewQuestion && phase === 'question' && (
+            <div className="text-sm text-purple-400 font-medium">📝 Review</div>
+          )}
+        </div>
       </div>
 
       {/* Confetti overlay — only true viewport popup */}
