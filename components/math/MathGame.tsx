@@ -1,0 +1,359 @@
+'use client'
+
+import { useState, useEffect, useRef, useCallback, startTransition } from 'react'
+import type { MathQuestion, GamePhase, GameState } from '@/types/game'
+import { QUESTIONS_PER_ROUND } from '@/types/game'
+import { generateQuestion, generateOptions, questionKey } from '@/lib/math/questionGenerator'
+import { adjustDifficulty, DIFFICULTY_LABELS } from '@/lib/math/difficultyManager'
+import {
+  addWrongAnswer,
+  promoteAnswer,
+  demoteAnswer,
+  getDueReviewQuestions,
+} from '@/lib/spaced-repetition/leitnerBox'
+import { loadGameState, saveGameState } from '@/lib/storage'
+import QuestionDisplay from './QuestionDisplay'
+import AnswerOptions from './AnswerOptions'
+import ProgressBar from './ProgressBar'
+import ScoreDisplay from './ScoreDisplay'
+import RewardAnimation, { generateRewardData, type ConfettiPiece } from './RewardAnimation'
+
+export default function MathGame() {
+  const [gameState, setGameState] = useState<GameState | null>(null)
+  const [phase, setPhase] = useState<GamePhase>('idle')
+  const [currentQuestion, setCurrentQuestion] = useState<MathQuestion | null>(null)
+  const [options, setOptions] = useState<number[]>([])
+  const [questionIndex, setQuestionIndex] = useState(0)
+  const [correctCount, setCorrectCount] = useState(0)
+  const [streak, setStreak] = useState(0)
+  const [bestStreak, setBestStreak] = useState(0)
+  const [results, setResults] = useState<('correct' | 'incorrect' | 'pending')[]>([])
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
+  const [isReviewQuestion, setIsReviewQuestion] = useState(false)
+  const [roundStartTime, setRoundStartTime] = useState(0)
+  const [roundElapsed, setRoundElapsed] = useState(0)
+
+  // Pre-generated reward data (set in event handlers, not render)
+  const [rewardEncouragement, setRewardEncouragement] = useState('')
+  const [rewardConfetti, setRewardConfetti] = useState<ConfettiPiece[]>([])
+
+  // Refs for values used in setTimeout closures
+  const questionIndexRef = useRef(0)
+  const gameStateRef = useRef<GameState | null>(null)
+  const roundStartTimeRef = useRef(0)
+  const reviewQueueRef = useRef<MathQuestion[]>([])
+  const reviewIndicesRef = useRef<Set<number>>(new Set())
+
+  // Sync refs via effects for setTimeout closure access
+  useEffect(() => { questionIndexRef.current = questionIndex }, [questionIndex])
+  useEffect(() => { gameStateRef.current = gameState }, [gameState])
+  useEffect(() => { roundStartTimeRef.current = roundStartTime }, [roundStartTime])
+
+  // Load saved state on mount
+  useEffect(() => {
+    const saved = loadGameState()
+    startTransition(() => setGameState(saved))
+  }, [])
+
+  // Save state whenever it changes
+  useEffect(() => {
+    if (gameState) saveGameState(gameState)
+  }, [gameState])
+
+  const showQuestion = useCallback(
+    (state: GameState, qIndex: number, revQueue: MathQuestion[], revIndices: Set<number>) => {
+      if (revIndices.has(qIndex) && revQueue.length > 0) {
+        const reviewQ = revQueue[0]
+        setCurrentQuestion(reviewQ)
+        setOptions(generateOptions(reviewQ.correctAnswer))
+        setIsReviewQuestion(true)
+        reviewQueueRef.current = revQueue.slice(1)
+      } else {
+        const q = generateQuestion(state.currentDifficulty)
+        setCurrentQuestion(q)
+        setOptions(generateOptions(q.correctAnswer))
+        setIsReviewQuestion(false)
+      }
+      setSelectedAnswer(null)
+      setPhase('question')
+    },
+    []
+  )
+
+  const advanceToNext = useCallback(() => {
+    const nextIdx = questionIndexRef.current + 1
+    if (nextIdx >= QUESTIONS_PER_ROUND) {
+      setRoundElapsed(Math.round((Date.now() - roundStartTimeRef.current) / 1000))
+      setPhase('roundComplete')
+      return
+    }
+    setQuestionIndex(nextIdx)
+    questionIndexRef.current = nextIdx
+
+    const state = gameStateRef.current
+    if (state) {
+      showQuestion(state, nextIdx, reviewQueueRef.current, reviewIndicesRef.current)
+    }
+  }, [showQuestion])
+
+  const startRound = useCallback(() => {
+    if (!gameState) return
+
+    const newRound = gameState.currentRound + 1
+    const newState = { ...gameState, currentRound: newRound }
+    setGameState(newState)
+    gameStateRef.current = newState
+
+    const dueReviews = getDueReviewQuestions(gameState.wrongAnswers, newRound, 2)
+    const revQueue = dueReviews.map((r) => r.question)
+
+    const revIndices = new Set<number>()
+    if (revQueue.length >= 1) revIndices.add(2 + Math.floor(Math.random() * 3))
+    if (revQueue.length >= 2) revIndices.add(6 + Math.floor(Math.random() * 3))
+
+    reviewQueueRef.current = revQueue
+    reviewIndicesRef.current = revIndices
+
+    setQuestionIndex(0)
+    questionIndexRef.current = 0
+    setCorrectCount(0)
+    setStreak(0)
+    setBestStreak(0)
+    setResults([])
+    setRoundStartTime(Date.now())
+
+    showQuestion(newState, 0, revQueue, revIndices)
+  }, [gameState, showQuestion])
+
+  const handleAnswer = useCallback(
+    (answer: number) => {
+      if (!currentQuestion || !gameState || phase !== 'question') return
+
+      setSelectedAnswer(answer)
+      const isCorrect = answer === currentQuestion.correctAnswer
+
+      if (isCorrect) {
+        const newStreak = streak + 1
+        setStreak(newStreak)
+        if (newStreak > bestStreak) setBestStreak(newStreak)
+        setCorrectCount((c) => c + 1)
+        setResults((r) => [...r, 'correct'])
+        setPhase('correct')
+
+        // Generate reward data in event handler (pure-render safe)
+        const reward = generateRewardData(newStreak)
+        setRewardEncouragement(reward.encouragement)
+        setRewardConfetti(reward.confettiPieces)
+
+        if (isReviewQuestion) {
+          const key = questionKey(currentQuestion)
+          setGameState((prev) =>
+            prev ? { ...prev, wrongAnswers: promoteAnswer(prev.wrongAnswers, key, prev.currentRound) } : prev
+          )
+        }
+
+        setTimeout(advanceToNext, 1800)
+      } else {
+        setStreak(0)
+        setResults((r) => [...r, 'incorrect'])
+        setPhase('incorrect')
+
+        if (isReviewQuestion) {
+          const key = questionKey(currentQuestion)
+          setGameState((prev) =>
+            prev ? { ...prev, wrongAnswers: demoteAnswer(prev.wrongAnswers, key, prev.currentRound) } : prev
+          )
+        } else {
+          setGameState((prev) =>
+            prev
+              ? { ...prev, wrongAnswers: addWrongAnswer(prev.wrongAnswers, currentQuestion, prev.currentRound) }
+              : prev
+          )
+        }
+
+        setTimeout(advanceToNext, 3000)
+      }
+    },
+    [currentQuestion, gameState, phase, streak, bestStreak, isReviewQuestion, advanceToNext]
+  )
+
+  const handleRoundComplete = useCallback(() => {
+    if (!gameState) return
+
+    const { newDifficulty, leveledUp } = adjustDifficulty(
+      gameState.currentDifficulty,
+      correctCount,
+      QUESTIONS_PER_ROUND
+    )
+
+    const roundResult = {
+      round: gameState.currentRound,
+      correct: correctCount,
+      total: QUESTIONS_PER_ROUND,
+      difficulty: gameState.currentDifficulty,
+      timestamp: Date.now(),
+    }
+
+    if (leveledUp) {
+      // Generate level-up reward data in event handler
+      const reward = generateRewardData(bestStreak)
+      setRewardEncouragement(reward.encouragement)
+      setRewardConfetti(reward.confettiPieces)
+    }
+
+    setGameState((prev) =>
+      prev
+        ? {
+            ...prev,
+            currentDifficulty: newDifficulty,
+            roundHistory: [...prev.roundHistory, roundResult],
+          }
+        : prev
+    )
+
+    if (leveledUp) {
+      setPhase('levelUp')
+    }
+  }, [gameState, correctCount, bestStreak])
+
+  // Loading
+  if (!gameState) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-4xl animate-pulse">🎮 Loading...</div>
+      </div>
+    )
+  }
+
+  // Idle screen
+  if (phase === 'idle') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-6">
+        <div className="text-center">
+          <h1 className="text-4xl sm:text-5xl font-extrabold mb-2 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 bg-clip-text text-transparent">
+            Math Game
+          </h1>
+          <p className="text-xl text-gray-500">
+            Level: {DIFFICULTY_LABELS[gameState.currentDifficulty]}
+          </p>
+          {gameState.roundHistory.length > 0 && (
+            <p className="text-gray-400 mt-1">{gameState.roundHistory.length} rounds done</p>
+          )}
+        </div>
+
+        <button
+          onClick={startRound}
+          className="px-12 py-6 rounded-3xl text-3xl font-extrabold text-white
+            bg-gradient-to-r from-green-400 to-cyan-500
+            shadow-xl hover:shadow-2xl hover:scale-105
+            active:scale-95 transition-all duration-200
+            cursor-pointer select-none"
+        >
+          Go! 🚀
+        </button>
+
+        {gameState.wrongAnswers.length > 0 && (
+          <p className="text-gray-400">📝 Review: {gameState.wrongAnswers.length} to practice</p>
+        )}
+      </div>
+    )
+  }
+
+  // Round complete summary
+  if (phase === 'roundComplete' || phase === 'levelUp') {
+    const accuracy = Math.round((correctCount / QUESTIONS_PER_ROUND) * 100)
+
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-6">
+        <RewardAnimation
+          show={phase === 'levelUp'}
+          encouragement={rewardEncouragement}
+          confettiPieces={rewardConfetti}
+        />
+
+        <h2 className="text-4xl font-extrabold text-center">
+          {phase === 'levelUp' ? '🎊 Level Up! 🎊' : '🌟 All Done!'}
+        </h2>
+
+        <div className="bg-white/80 rounded-3xl p-8 shadow-xl text-center space-y-4 max-w-sm w-full">
+          <div className="text-6xl font-extrabold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+            {correctCount}/{QUESTIONS_PER_ROUND}
+          </div>
+          <div className="text-xl text-gray-600">{accuracy}% right</div>
+          {bestStreak >= 2 && (
+            <div className="text-lg text-orange-500 font-bold">🔥 Best streak x{bestStreak}</div>
+          )}
+          <div className="text-sm text-gray-400">{roundElapsed} seconds</div>
+          {phase === 'levelUp' && (
+            <div className="text-lg font-bold text-purple-600">
+              New level: {DIFFICULTY_LABELS[gameState.currentDifficulty]}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => {
+            if (phase === 'roundComplete') handleRoundComplete()
+            setPhase('idle')
+          }}
+          className="px-10 py-5 rounded-3xl text-2xl font-extrabold text-white
+            bg-gradient-to-r from-pink-500 to-purple-500
+            shadow-xl hover:shadow-2xl hover:scale-105
+            active:scale-95 transition-all duration-200
+            cursor-pointer select-none"
+        >
+          Play Again! 🎯
+        </button>
+      </div>
+    )
+  }
+
+  // Active game (question / correct / incorrect)
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-between p-4 sm:p-6 gap-4">
+      <div className="w-full flex items-center justify-between">
+        <ScoreDisplay correct={correctCount} streak={streak} />
+        <span className="text-sm text-gray-400 font-medium">
+          {DIFFICULTY_LABELS[gameState.currentDifficulty]}
+        </span>
+      </div>
+
+      <ProgressBar current={questionIndex} results={results} />
+
+      <div className="flex-1 flex flex-col items-center justify-center gap-8">
+        {currentQuestion && <QuestionDisplay question={currentQuestion} />}
+
+        {phase === 'correct' && (
+          <div className="text-3xl font-extrabold text-green-500 animate-bounce">
+            {streak >= 3 ? 'On fire! 🔥' : 'Yes! ✨'}
+          </div>
+        )}
+        {phase === 'incorrect' && currentQuestion && (
+          <div className="text-2xl font-bold text-orange-500 animate-pulse">
+            Good try! It&apos;s <span className="text-green-600 text-3xl">{currentQuestion.correctAnswer}</span>
+          </div>
+        )}
+
+        {currentQuestion && (
+          <AnswerOptions
+            options={options}
+            onSelect={handleAnswer}
+            disabled={phase !== 'question'}
+            correctAnswer={phase !== 'question' ? currentQuestion.correctAnswer : null}
+            selectedAnswer={selectedAnswer}
+          />
+        )}
+
+        {isReviewQuestion && phase === 'question' && (
+          <div className="text-sm text-purple-400 font-medium">📝 Review</div>
+        )}
+      </div>
+
+      <RewardAnimation
+        show={phase === 'correct'}
+        encouragement={rewardEncouragement}
+        confettiPieces={rewardConfetti}
+      />
+    </div>
+  )
+}
