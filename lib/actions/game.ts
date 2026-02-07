@@ -3,13 +3,15 @@
 import { db } from '@/lib/db'
 import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { requireUserId } from '@/lib/auth-helpers'
 import type { GameState, DifficultyLevel, LeitnerBox, OperationType, QuestionRecord } from '@/types/game'
 
 export async function getGameState(): Promise<GameState> {
-  const row = db.select().from(gameStateTable).where(eq(gameStateTable.id, 1)).get()
+  const userId = await requireUserId()
+  const row = db.select().from(gameStateTable).where(eq(gameStateTable.userId, userId)).get()
 
   if (!row) {
-    db.insert(gameStateTable).values({ id: 1, currentDifficulty: 1, currentRound: 0 }).run()
+    db.insert(gameStateTable).values({ userId, currentDifficulty: 1, currentRound: 0 }).run()
     return {
       currentDifficulty: 1,
       currentRound: 0,
@@ -18,8 +20,8 @@ export async function getGameState(): Promise<GameState> {
     }
   }
 
-  const wrongRows = db.select().from(wrongAnswers).all()
-  const roundRows = db.select().from(roundHistory).all()
+  const wrongRows = db.select().from(wrongAnswers).where(eq(wrongAnswers.userId, userId)).all()
+  const roundRows = db.select().from(roundHistory).where(eq(roundHistory.userId, userId)).all()
 
   return {
     currentDifficulty: row.currentDifficulty as DifficultyLevel,
@@ -48,19 +50,22 @@ export async function getGameState(): Promise<GameState> {
 }
 
 export async function saveGameState(state: GameState): Promise<void> {
+  const userId = await requireUserId()
+
   db.update(gameStateTable)
     .set({
       currentDifficulty: state.currentDifficulty,
       currentRound: state.currentRound,
     })
-    .where(eq(gameStateTable.id, 1))
+    .where(eq(gameStateTable.userId, userId))
     .run()
 
-  // Sync wrong answers: delete all and re-insert
-  db.delete(wrongAnswers).run()
+  // Sync wrong answers: delete all for this user and re-insert
+  db.delete(wrongAnswers).where(eq(wrongAnswers.userId, userId)).run()
   for (const w of state.wrongAnswers) {
     db.insert(wrongAnswers)
       .values({
+        userId,
         questionKey: w.questionKey,
         operand1: w.question.operand1,
         operand2: w.question.operand2,
@@ -81,8 +86,11 @@ export async function saveRoundResult(result: {
   difficulty: number
   timestamp: number
 }): Promise<void> {
+  const userId = await requireUserId()
+
   db.insert(roundHistory)
     .values({
+      userId,
       round: result.round,
       correct: result.correct,
       total: result.total,
@@ -103,7 +111,8 @@ export interface DashboardData {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const rows = db.select().from(roundHistory).all()
+  const userId = await requireUserId()
+  const rows = db.select().from(roundHistory).where(eq(roundHistory.userId, userId)).all()
 
   if (rows.length === 0) {
     return { totalRounds: 0, overallAccuracy: 0, dailyStats: [] }
@@ -137,10 +146,12 @@ export async function getDashboardData(): Promise<DashboardData> {
 }
 
 export async function saveQuestionRecords(round: number, records: QuestionRecord[]): Promise<void> {
+  const userId = await requireUserId()
   const now = Date.now()
   for (const r of records) {
     db.insert(questionHistory)
       .values({
+        userId,
         round,
         operand1: r.question.operand1,
         operand2: r.question.operand2,
