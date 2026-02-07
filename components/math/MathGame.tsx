@@ -35,6 +35,7 @@ export default function MathGame() {
   const [bestStreak, setBestStreak] = useState(0)
   const [results, setResults] = useState<('correct' | 'incorrect' | 'pending')[]>([])
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
+  const [showHint, setShowHint] = useState(false)
   const [isReviewQuestion, setIsReviewQuestion] = useState(false)
   const [roundStartTime, setRoundStartTime] = useState(0)
   const [roundElapsed, setRoundElapsed] = useState(0)
@@ -77,6 +78,7 @@ export default function MathGame() {
         setIsReviewQuestion(false)
       }
       setSelectedAnswer(null)
+      setShowHint(false)
       setPhase('question')
     },
     []
@@ -350,7 +352,13 @@ export default function MathGame() {
         <div className="flex flex-col flex-1 items-center justify-center gap-8">
           <Encouragement show={phase === 'correct'} text={rewardEncouragement} />
 
-          {currentQuestion && <QuestionDisplay question={currentQuestion} />}
+          {currentQuestion && (
+              <QuestionDisplay
+                question={currentQuestion}
+                showHint={showHint}
+                onHintClick={() => setShowHint(true)}
+              />
+            )}
 
           {/* Feedback messages */}
           {phase === 'correct' && (
