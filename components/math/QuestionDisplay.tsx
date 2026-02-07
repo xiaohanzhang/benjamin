@@ -17,13 +17,27 @@ function getEmoji(questionId: string): string {
 }
 
 function EmojiRow({ count, emoji }: { count: number; emoji: string }) {
-  // Show emojis in a wrapped row, max 10 per line
+  // Show emojis in rows of 5 for easy counting
+  const rows: number[] = []
+  let remaining = count
+  while (remaining > 0) {
+    rows.push(Math.min(remaining, 5))
+    remaining -= 5
+  }
+
   return (
-    <div className="flex flex-wrap justify-center gap-1">
-      {Array.from({ length: count }, (_, i) => (
-        <span key={i} className="text-2xl sm:text-3xl animate-pop" style={{ animationDelay: `${i * 50}ms` }}>
-          {emoji}
-        </span>
+    <div className="flex flex-col items-center gap-0.5">
+      {rows.map((rowCount, rowIdx) => (
+        <div key={rowIdx} className="flex justify-center gap-1">
+          {Array.from({ length: rowCount }, (_, i) => {
+            const idx = rowIdx * 5 + i
+            return (
+              <span key={idx} className="text-2xl sm:text-3xl animate-pop" style={{ animationDelay: `${idx * 50}ms` }}>
+                {emoji}
+              </span>
+            )
+          })}
+        </div>
       ))}
     </div>
   )
