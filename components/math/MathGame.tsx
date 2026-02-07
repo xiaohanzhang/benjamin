@@ -11,7 +11,7 @@ import {
   demoteAnswer,
   getDueReviewQuestions,
 } from '@/lib/spaced-repetition/leitnerBox'
-import { loadGameState, saveGameState } from '@/lib/storage'
+import { getGameState, saveGameState, saveRoundResult, saveQuestionRecords } from '@/lib/actions/game'
 import QuestionDisplay from './QuestionDisplay'
 import AnswerOptions from './AnswerOptions'
 import ProgressBar from './ProgressBar'
@@ -59,14 +59,8 @@ export default function MathGame() {
 
   // Load saved state on mount
   useEffect(() => {
-    const saved = loadGameState()
-    startTransition(() => setGameState(saved))
+    getGameState().then((saved) => startTransition(() => setGameState(saved)))
   }, [])
-
-  // Save state whenever it changes
-  useEffect(() => {
-    if (gameState) saveGameState(gameState)
-  }, [gameState])
 
   const showQuestion = useCallback(
     (state: GameState, qIndex: number, revQueue: MathQuestion[], revIndices: Set<number>) => {
@@ -112,6 +106,9 @@ export default function MathGame() {
     setGameState(newState)
     gameStateRef.current = newState
 
+    // Persist round increment
+    saveGameState(newState)
+
     const dueReviews = getDueReviewQuestions(gameState.wrongAnswers, newRound, 2)
     const revQueue = dueReviews.map((r) => r.question)
 
@@ -156,9 +153,12 @@ export default function MathGame() {
 
         if (isReviewQuestion) {
           const key = questionKey(currentQuestion)
-          setGameState((prev) =>
-            prev ? { ...prev, wrongAnswers: promoteAnswer(prev.wrongAnswers, key, prev.currentRound) } : prev
-          )
+          setGameState((prev) => {
+            if (!prev) return prev
+            const updated = { ...prev, wrongAnswers: promoteAnswer(prev.wrongAnswers, key, prev.currentRound) }
+            saveGameState(updated)
+            return updated
+          })
         }
 
         setTimeout(advanceToNext, 1800)
@@ -169,15 +169,19 @@ export default function MathGame() {
 
         if (isReviewQuestion) {
           const key = questionKey(currentQuestion)
-          setGameState((prev) =>
-            prev ? { ...prev, wrongAnswers: demoteAnswer(prev.wrongAnswers, key, prev.currentRound) } : prev
-          )
+          setGameState((prev) => {
+            if (!prev) return prev
+            const updated = { ...prev, wrongAnswers: demoteAnswer(prev.wrongAnswers, key, prev.currentRound) }
+            saveGameState(updated)
+            return updated
+          })
         } else {
-          setGameState((prev) =>
-            prev
-              ? { ...prev, wrongAnswers: addWrongAnswer(prev.wrongAnswers, currentQuestion, prev.currentRound) }
-              : prev
-          )
+          setGameState((prev) => {
+            if (!prev) return prev
+            const updated = { ...prev, wrongAnswers: addWrongAnswer(prev.wrongAnswers, currentQuestion, prev.currentRound) }
+            saveGameState(updated)
+            return updated
+          })
         }
 
         setTimeout(advanceToNext, 3000)
@@ -209,20 +213,25 @@ export default function MathGame() {
       setRewardConfetti(reward.confettiPieces)
     }
 
-    setGameState((prev) =>
-      prev
-        ? {
-            ...prev,
-            currentDifficulty: newDifficulty,
-            roundHistory: [...prev.roundHistory, roundResult],
-          }
-        : prev
-    )
+    setGameState((prev) => {
+      if (!prev) return prev
+      const updated = {
+        ...prev,
+        currentDifficulty: newDifficulty,
+        roundHistory: [...prev.roundHistory, roundResult],
+      }
+      saveGameState(updated)
+      return updated
+    })
+
+    // Persist round result and question records
+    saveRoundResult(roundResult)
+    saveQuestionRecords(gameState.currentRound, questionHistory)
 
     if (leveledUp) {
       setPhase('levelUp')
     }
-  }, [gameState, correctCount, bestStreak])
+  }, [gameState, correctCount, bestStreak, questionHistory])
 
   // Loading
   if (!gameState) {

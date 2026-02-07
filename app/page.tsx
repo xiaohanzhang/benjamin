@@ -19,6 +19,13 @@ export default function Home() {
           gradient="bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500"
         />
         <GameCard
+          title="Dashboard"
+          description="View your stats"
+          emoji="📊"
+          href="/dashboard"
+          gradient="bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-500"
+        />
+        <GameCard
           title="More Games"
           description="Coming soon..."
           emoji="🎮"
