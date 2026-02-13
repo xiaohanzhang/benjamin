@@ -1,4 +1,4 @@
-import { auth } from '@/auth'
+import { auth } from '@/server/auth'
 
 export async function requireUserId(): Promise<string> {
   const session = await auth()

@@ -1,4 +1,4 @@
-import { auth } from '@/auth'
+import { auth } from '@/server/auth'
 import GameCard from '@/components/shared/GameCard'
 
 export default async function Home() {

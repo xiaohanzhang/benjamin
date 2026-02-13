@@ -1,4 +1,4 @@
-import { auth, signOut } from '@/auth'
+import { auth, signOut } from '@/server/auth'
 import Image from 'next/image'
 
 export default async function UserMenu() {

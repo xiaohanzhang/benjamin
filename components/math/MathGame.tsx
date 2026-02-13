@@ -11,7 +11,7 @@ import {
   demoteAnswer,
   getDueReviewQuestions,
 } from '@/lib/spaced-repetition/leitnerBox'
-import { getGameState, saveGameState, saveRoundResult, saveQuestionRecords } from '@/lib/actions/game'
+import { getGameState, saveGameState, saveRoundResult, saveQuestionRecords } from '@/server/actions/game'
 import QuestionDisplay from './QuestionDisplay'
 import AnswerOptions from './AnswerOptions'
 import ProgressBar from './ProgressBar'

@@ -1,9 +1,9 @@
 'use server'
 
-import { db } from '@/lib/db'
-import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory } from '@/lib/db/schema'
+import { db } from '@/server/db'
+import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory } from '@/server/db/schema'
 import { eq } from 'drizzle-orm'
-import { requireUserId } from '@/lib/auth-helpers'
+import { requireUserId } from '@/server/auth-helpers'
 import type { GameState, DifficultyLevel, LeitnerBox, OperationType, QuestionRecord } from '@/types/game'
 
 export async function getGameState(): Promise<GameState> {

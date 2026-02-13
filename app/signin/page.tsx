@@ -1,4 +1,4 @@
-import { signIn } from '@/auth'
+import { signIn } from '@/server/auth'
 
 export default function SignInPage() {
   return (

@@ -1,48 +1,63 @@
-import { sqliteTable, integer, text, primaryKey } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, integer, text, primaryKey } from 'drizzle-orm/sqlite-core';
+import type { AdapterAccountType } from "next-auth/adapters";
 
 // Auth.js tables
-export const users = sqliteTable('user', {
-  id: text('id')
+export const users = sqliteTable("user", {
+  id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  name: text('name'),
-  email: text('email').notNull(),
-  emailVerified: integer('emailVerified', { mode: 'timestamp_ms' }),
-  image: text('image'),
-})
-
+  name: text("name"),
+  email: text("email").unique(),
+  emailVerified: integer("emailVerified", { mode: "timestamp_ms" }),
+  image: text("image"),
+});
+ 
 export const accounts = sqliteTable(
-  'account',
+  "account",
   {
-    userId: text('userId')
+    provider: text("provider").notNull(),
+    providerAccountId: text("providerAccountId").notNull(),
+    userId: text("userId")
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    type: text('type').notNull(),
-    provider: text('provider').notNull(),
-    providerAccountId: text('providerAccountId').notNull(),
-    refresh_token: text('refresh_token'),
-    access_token: text('access_token'),
-    expires_at: integer('expires_at'),
-    token_type: text('token_type'),
-    scope: text('scope'),
-    id_token: text('id_token'),
-    session_state: text('session_state'),
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").$type<AdapterAccountType>().notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
   },
   (account) => [
-    primaryKey({ columns: [account.provider, account.providerAccountId] }),
-  ],
-)
-
+    primaryKey({
+      columns: [account.provider, account.providerAccountId],
+    }),
+  ]
+);
+ 
+export const sessions = sqliteTable("session", {
+  sessionToken: text("sessionToken").primaryKey(),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
+});
+ 
 export const verificationTokens = sqliteTable(
-  'verificationToken',
+  "verificationToken",
   {
-    identifier: text('identifier').notNull(),
-    token: text('token').notNull(),
-    expires: integer('expires', { mode: 'timestamp_ms' }).notNull(),
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
   },
-  (vt) => [primaryKey({ columns: [vt.identifier, vt.token] })],
-)
-
+  (verificationToken) => [
+    primaryKey({
+      columns: [verificationToken.identifier, verificationToken.token],
+    }),
+  ]
+);
+ 
 // Game tables — scoped by userId
 export const gameState = sqliteTable('game_state', {
   userId: text('user_id')
