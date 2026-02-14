@@ -44,5 +44,6 @@ next-env.d.ts
 data/*.db
 data/*.db-*
 
+.vscode/
 .claude/
 CLAUDE.md
