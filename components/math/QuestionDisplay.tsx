@@ -6,6 +6,7 @@ interface QuestionDisplayProps {
   question: MathQuestion
   showHint?: boolean
   onHintClick?: () => void
+  inputValue?: string
 }
 
 const EMOJI_SETS = ['🍎', '⭐', '🌸', '🐱', '🎈', '🍊', '💜', '🐶']
@@ -43,7 +44,7 @@ function EmojiRow({ count, emoji }: { count: number; emoji: string }) {
   )
 }
 
-export default function QuestionDisplay({ question, showHint, onHintClick }: QuestionDisplayProps) {
+export default function QuestionDisplay({ question, showHint, onHintClick, inputValue }: QuestionDisplayProps) {
   const emoji = getEmoji(question.id)
   const symbol = question.operation === 'addition' ? '+' : '−'
 
@@ -83,7 +84,7 @@ export default function QuestionDisplay({ question, showHint, onHintClick }: Que
         <span className="text-pink-500 mx-3">{symbol}</span>
         <span className="text-green-500">{question.operand2}</span>
         <span className="text-purple-500 mx-3">=</span>
-        <span className="text-orange-400">?</span>
+        <span className="text-orange-400">{inputValue ? inputValue : '?'}</span>
       </div>
 
       {/* Make 10 hint */}

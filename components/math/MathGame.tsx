@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, startTransition } from 'react'
 import type { MathQuestion, GamePhase, GameState, QuestionRecord } from '@/types/game'
 import { QUESTIONS_PER_ROUND } from '@/types/game'
-import { generateQuestion, generateOptions, questionKey } from '@/lib/math/questionGenerator'
+import { generateQuestion, questionKey } from '@/lib/math/questionGenerator'
 import { adjustDifficulty, DIFFICULTY_LABELS } from '@/lib/math/difficultyManager'
 import {
   addWrongAnswer,
@@ -28,7 +28,7 @@ export default function MathGame() {
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [phase, setPhase] = useState<GamePhase>('idle')
   const [currentQuestion, setCurrentQuestion] = useState<MathQuestion | null>(null)
-  const [options, setOptions] = useState<number[]>([])
+  const [answerInput, setAnswerInput] = useState('')
   const [questionIndex, setQuestionIndex] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
   const [streak, setStreak] = useState(0)
@@ -68,16 +68,15 @@ export default function MathGame() {
       if (revIndices.has(qIndex) && revQueue.length > 0) {
         const reviewQ = revQueue[0]
         setCurrentQuestion(reviewQ)
-        setOptions(generateOptions(reviewQ.correctAnswer))
         setIsReviewQuestion(true)
         reviewQueueRef.current = revQueue.slice(1)
       } else {
         const q = generateQuestion(state.currentDifficulty)
         setCurrentQuestion(q)
-        setOptions(generateOptions(q.correctAnswer))
         setIsReviewQuestion(false)
       }
       setSelectedAnswer(null)
+      setAnswerInput('')
       setShowHint(false)
       setPhase('question')
     },
@@ -132,6 +131,17 @@ export default function MathGame() {
 
     showQuestion(newState, 0, revQueue, revIndices)
   }, [gameState, showQuestion])
+
+  const handleDigit = useCallback((digit: number) => {
+    setAnswerInput((prev) => {
+      if (prev.length >= 3) return prev // max 3 digits
+      return prev + digit.toString()
+    })
+  }, [])
+
+  const handleDelete = useCallback(() => {
+    setAnswerInput((prev) => prev.slice(0, -1))
+  }, [])
 
   const handleAnswer = useCallback(
     (answer: number) => {
@@ -191,6 +201,12 @@ export default function MathGame() {
     },
     [currentQuestion, gameState, phase, streak, bestStreak, isReviewQuestion, advanceToNext]
   )
+
+  const handleSubmit = useCallback(() => {
+    if (answerInput.length === 0) return
+    const answer = parseInt(answerInput, 10)
+    handleAnswer(answer)
+  }, [answerInput, handleAnswer])
 
   const handleRoundComplete = useCallback(() => {
     if (!gameState) return
@@ -357,6 +373,7 @@ export default function MathGame() {
                 question={currentQuestion}
                 showHint={showHint}
                 onHintClick={() => setShowHint(true)}
+                inputValue={phase === 'question' ? answerInput : (selectedAnswer !== null ? String(selectedAnswer) : '')}
               />
             )}
 
@@ -372,14 +389,14 @@ export default function MathGame() {
             </div>
           )}
 
-          {/* Answer buttons */}
+          {/* Number pad */}
           {currentQuestion && (
             <AnswerOptions
-              options={options}
-              onSelect={handleAnswer}
+              inputValue={answerInput}
+              onDigit={handleDigit}
+              onDelete={handleDelete}
+              onSubmit={handleSubmit}
               disabled={phase !== 'question'}
-              correctAnswer={phase !== 'question' ? currentQuestion.correctAnswer : null}
-              selectedAnswer={selectedAnswer}
             />
           )}
 
