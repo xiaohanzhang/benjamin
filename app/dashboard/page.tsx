@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { getDashboardData } from '@/lib/actions/game'
+import { getDashboardData } from '@/server/actions/game'
 
 export default async function DashboardPage() {
   const data = await getDashboardData()
@@ -8,12 +8,6 @@ export default async function DashboardPage() {
     <div className="min-h-screen flex flex-col items-center p-6 sm:p-10">
       {/* Header */}
       <div className="w-full max-w-2xl mb-10">
-        <Link
-          href="/"
-          className="text-sm font-semibold text-purple-500 hover:text-purple-700 transition-colors"
-        >
-          &larr; Back to Games
-        </Link>
         <h1 className="mt-3 text-3xl sm:text-5xl font-extrabold bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 bg-clip-text text-transparent">
           Dashboard
         </h1>

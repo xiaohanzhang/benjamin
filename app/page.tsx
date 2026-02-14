@@ -30,11 +30,11 @@ export default async function Home() {
           gradient="bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-500"
         />
         <GameCard
-          title="More Games"
-          description="Coming soon..."
-          emoji="🎮"
-          href="#"
-          gradient="bg-gradient-to-br from-gray-300 to-gray-400"
+          title="Making 10"
+          description="Shoot planks to make 10!"
+          emoji="🪵"
+          href="/blocks"
+          gradient="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500"
         />
       </div>
     </div>

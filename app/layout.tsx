@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Link from 'next/link';
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import UserMenu from "@/components/shared/UserMenu";
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <Link href="/" className="absolute top-4 left-4 text-2xl">🏠</Link>
         <UserMenu />
         {children}
       </body>
