@@ -212,39 +212,44 @@ export default function BlocksGame() {
       const stackX = (gridOffX - stackW) / 2
       const pad = cell * 0.08
 
-      // Move planks
-      for (const p of g.planks) p.y += fallSpeed * dt
+      const shooting = g.shots.length > 0
 
-      // Planks hitting ground
-      const dead: number[] = []
-      for (const p of g.planks) {
-        if (p.y + p.len * cell >= groundY) {
-          dead.push(p.id)
-          g.hp--
-          g.fx.push({ id: g.nid++, text: '-1', x: gridOffX + (p.x + 0.5) * cell, y: groundY - p.len * cell, t0: t, ok: false })
-        }
-      }
-      if (dead.length) {
-        g.planks = g.planks.filter(p => !dead.includes(p.id))
-        setHp(g.hp)
-        if (g.hp <= 0) {
-          g.alive = false
-          if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
-          setPhase('over')
-          return
-        }
-      }
+      // Freeze everything while shot animation plays
+      if (!shooting) {
+        // Move planks
+        for (const p of g.planks) p.y += fallSpeed * dt
 
-      // Spawning
-      const maxP = Math.min(5, 1 + Math.floor(g.score / 3))
-      const interval = Math.max(MIN_SPAWN_MS, BASE_SPAWN_MS - g.score * SPAWN_DEC)
-      if (g.planks.length < maxP && t - g.lastSpawn >= interval) { spawn(g); g.lastSpawn = t }
-      if (g.planks.length === 0 && g.shots.length === 0) { spawn(g); g.lastSpawn = t }
+        // Planks hitting ground
+        const dead: number[] = []
+        for (const p of g.planks) {
+          if (p.y + p.len * cell >= groundY) {
+            dead.push(p.id)
+            g.hp--
+            g.fx.push({ id: g.nid++, text: '-1', x: gridOffX + (p.x + 0.5) * cell, y: groundY - p.len * cell, t0: t, ok: false })
+          }
+        }
+        if (dead.length) {
+          g.planks = g.planks.filter(p => !dead.includes(p.id))
+          setHp(g.hp)
+          if (g.hp <= 0) {
+            g.alive = false
+            if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
+            setPhase('over')
+            return
+          }
+        }
+
+        // Spawning
+        const maxP = Math.min(5, 1 + Math.floor(g.score / 3))
+        const interval = Math.max(MIN_SPAWN_MS, BASE_SPAWN_MS - g.score * SPAWN_DEC)
+        if (g.planks.length < maxP && t - g.lastSpawn >= interval) { spawn(g); g.lastSpawn = t }
+        if (g.planks.length === 0) { spawn(g); g.lastSpawn = t }
+      }
 
       // Update shot animations
       for (const s of g.shots) {
         const elapsed = t - s.phaseStart
-        if (s.phase === 'rising' && elapsed >= 250) {
+        if (s.phase === 'rising' && elapsed >= 700) {
           s.phase = 'flying'
           s.phaseStart = t
           g.score++
@@ -256,7 +261,7 @@ export default function BlocksGame() {
             y: s.targetY,
             t0: t, ok: true,
           })
-        } else if (s.phase === 'flying' && elapsed >= 500) {
+        } else if (s.phase === 'flying' && elapsed >= 800) {
           g.stack.push(s.targetColor)
           s.phase = 'done'
         }
@@ -374,7 +379,7 @@ export default function BlocksGame() {
         const pw = cell - pad * 2
 
         if (s.phase === 'rising') {
-          const progress = Math.min(elapsed / 250, 1)
+          const progress = Math.min(elapsed / 700, 1)
           const eased = 1 - Math.pow(1 - progress, 3)
 
           // Frozen target plank
@@ -407,7 +412,7 @@ export default function BlocksGame() {
         }
 
         if (s.phase === 'flying') {
-          const progress = Math.min(elapsed / 500, 1)
+          const progress = Math.min(elapsed / 800, 1)
           const eased = 1 - Math.pow(1 - progress, 2)
 
           // From merged position to stack position
