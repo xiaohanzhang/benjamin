@@ -6,7 +6,7 @@ import Link from 'next/link'
 // ── Constants ──────────────────────────────────────────────
 const GRID_W = 10
 const GRID_H = 30
-const STACK_CELLS = 2 // extra columns on left for score stack
+const STACK_CELLS = 2
 const INITIAL_HP = 10
 const BASE_SPEED = 50
 const SPEED_PER_POINT = 3
@@ -24,28 +24,30 @@ const COLORS: Record<number, string> = {
 // ── Types ──────────────────────────────────────────────────
 interface Plank { id: number; len: number; x: number; y: number }
 interface Fx { id: number; text: string; x: number; y: number; t0: number; ok: boolean }
-interface Beam { id: number; x1: number; y1: number; x2: number; y2: number; t0: number; color: string }
 interface ShotAnim {
   id: number
   shotLen: number; shotColor: string
   targetLen: number; targetColor: string
   col: number; charCol: number
-  phase: 'rising' | 'flying' | 'done'
+  phase: 'rising' | 'flying' | 'wrong_flash' | 'falling' | 'done'
   phaseStart: number; targetY: number; stackIdx: number
+  hit: boolean
 }
 
 interface Game {
-  planks: Plank[]; fx: Fx[]; beams: Beam[]; shots: ShotAnim[]
+  planks: Plank[]; fx: Fx[]; shots: ShotAnim[]
   stack: string[]
   charX: number; score: number; hp: number
   nid: number; lastSpawn: number; alive: boolean
+  hurtUntil: number
 }
 
 function mkGame(): Game {
   return {
-    planks: [], fx: [], beams: [], shots: [], stack: [],
+    planks: [], fx: [], shots: [], stack: [],
     charX: 4, score: 0, hp: INITIAL_HP,
     nid: 1, lastSpawn: 0, alive: true,
+    hurtUntil: 0,
   }
 }
 
@@ -63,7 +65,7 @@ function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
   c.closePath()
 }
 
-function drawChar(ctx: CanvasRenderingContext2D, cx: number, groundY: number, cell: number) {
+function drawChar(ctx: CanvasRenderingContext2D, cx: number, groundY: number, cell: number, hurt: boolean) {
   const r = cell * 0.28
   const headY = groundY - cell * 0.65
   ctx.fillStyle = '#4CAF50'
@@ -72,15 +74,41 @@ function drawChar(ctx: CanvasRenderingContext2D, cx: number, groundY: number, ce
   ctx.fillStyle = '#FFD93D'
   ctx.beginPath(); ctx.arc(cx, headY, r, 0, Math.PI * 2); ctx.fill()
   ctx.strokeStyle = '#E8A800'; ctx.lineWidth = 1.5; ctx.stroke()
-  ctx.fillStyle = '#333'
-  ctx.beginPath()
-  ctx.arc(cx - r * 0.35, headY - r * 0.1, r * 0.12, 0, Math.PI * 2)
-  ctx.arc(cx + r * 0.35, headY - r * 0.1, r * 0.12, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2
-  ctx.beginPath()
-  ctx.arc(cx, headY + r * 0.05, r * 0.35, 0.15 * Math.PI, 0.85 * Math.PI)
-  ctx.stroke()
+  if (hurt) {
+    // Crying eyes: small arcs
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(cx - r * 0.35, headY - r * 0.05, r * 0.15, 0, Math.PI)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(cx + r * 0.35, headY - r * 0.05, r * 0.15, 0, Math.PI)
+    ctx.stroke()
+    // Tears
+    ctx.fillStyle = '#60A5FA'
+    ctx.beginPath()
+    ctx.ellipse(cx - r * 0.5, headY + r * 0.25, r * 0.06, r * 0.15, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.ellipse(cx + r * 0.5, headY + r * 0.3, r * 0.06, r * 0.15, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // Frown
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(cx, headY + r * 0.45, r * 0.3, 1.15 * Math.PI, 1.85 * Math.PI)
+    ctx.stroke()
+  } else {
+    // Normal eyes
+    ctx.fillStyle = '#333'
+    ctx.beginPath()
+    ctx.arc(cx - r * 0.35, headY - r * 0.1, r * 0.12, 0, Math.PI * 2)
+    ctx.arc(cx + r * 0.35, headY - r * 0.1, r * 0.12, 0, Math.PI * 2)
+    ctx.fill()
+    // Smile
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(cx, headY + r * 0.05, r * 0.35, 0.15 * Math.PI, 0.85 * Math.PI)
+    ctx.stroke()
+  }
 }
 
 // ── Component ──────────────────────────────────────────────
@@ -103,7 +131,6 @@ export default function BlocksGame() {
     if (s) setBest(parseInt(s))
   }, [])
 
-  // Canvas resize — includes STACK_CELLS extra columns on left
   useEffect(() => {
     const cvs = canvasRef.current
     if (!cvs) return
@@ -148,43 +175,26 @@ export default function BlocksGame() {
     if (!g.alive) return
     const now = performance.now()
     if (now - lastShotRef.current < SHOT_CD) return
-    if (g.shots.length > 0) return // one shot at a time
+    if (g.shots.length > 0) return
     lastShotRef.current = now
 
     const cell = cellRef.current
-    const gridOffX = STACK_CELLS * cell
     const groundY = (GRID_H - 1) * cell
     const target = findTarget(g, groundY, cell)
     if (!target) return
 
-    if (n + target.len === 10) {
-      // Animated shot — remove target from falling planks, create animation
-      g.shots.push({
-        id: g.nid++,
-        shotLen: n, shotColor: COLORS[n],
-        targetLen: target.len, targetColor: COLORS[target.len],
-        col: target.x, charCol: g.charX,
-        phase: 'rising', phaseStart: now,
-        targetY: target.y, stackIdx: g.stack.length,
-      })
-      g.planks = g.planks.filter(p => p.id !== target.id)
-    } else {
-      // Miss — instant feedback
-      const cx = gridOffX + (g.charX + 0.5) * cell
-      const cy = groundY - cell * 0.3
-      const tx = gridOffX + (target.x + 0.5) * cell
-      const ty = target.y + target.len * cell / 2
-      g.beams.push({ id: g.nid++, x1: cx, y1: cy, x2: tx, y2: ty, t0: now, color: '#EF4444' })
-      g.fx.push({ id: g.nid++, text: `${target.len}+${n}=${target.len + n} ✗`, x: tx, y: ty, t0: now, ok: false })
-      g.hp--
-      setHp(g.hp)
-      if (g.hp <= 0) {
-        g.alive = false
-        if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
-        setPhase('over')
-      }
-    }
-  }, [findTarget, best])
+    const isHit = n + target.len === 10
+    g.shots.push({
+      id: g.nid++,
+      shotLen: n, shotColor: COLORS[n],
+      targetLen: target.len, targetColor: COLORS[target.len],
+      col: target.x, charCol: g.charX,
+      phase: 'rising', phaseStart: now,
+      targetY: target.y, stackIdx: g.stack.length,
+      hit: isHit,
+    })
+    g.planks = g.planks.filter(p => p.id !== target.id)
+  }, [findTarget])
 
   // Game loop
   useEffect(() => {
@@ -216,10 +226,8 @@ export default function BlocksGame() {
 
       // Freeze everything while shot animation plays
       if (!shooting) {
-        // Move planks
         for (const p of g.planks) p.y += fallSpeed * dt
 
-        // Planks hitting ground
         const dead: number[] = []
         for (const p of g.planks) {
           if (p.y + p.len * cell >= groundY) {
@@ -230,6 +238,7 @@ export default function BlocksGame() {
         }
         if (dead.length) {
           g.planks = g.planks.filter(p => !dead.includes(p.id))
+          g.hurtUntil = t + 1200
           setHp(g.hp)
           if (g.hp <= 0) {
             g.alive = false
@@ -239,7 +248,6 @@ export default function BlocksGame() {
           }
         }
 
-        // Spawning
         const maxP = Math.min(5, 1 + Math.floor(g.score / 3))
         const interval = Math.max(MIN_SPAWN_MS, BASE_SPAWN_MS - g.score * SPAWN_DEC)
         if (g.planks.length < maxP && t - g.lastSpawn >= interval) { spawn(g); g.lastSpawn = t }
@@ -250,29 +258,51 @@ export default function BlocksGame() {
       for (const s of g.shots) {
         const elapsed = t - s.phaseStart
         if (s.phase === 'rising' && elapsed >= 700) {
-          s.phase = 'flying'
           s.phaseStart = t
-          g.score++
-          setScore(g.score)
-          g.fx.push({
-            id: g.nid++,
-            text: `${s.targetLen} + ${s.shotLen} = 10!`,
-            x: gridOffX + (s.col + 0.5) * cell,
-            y: s.targetY,
-            t0: t, ok: true,
-          })
+          if (s.hit) {
+            s.phase = 'flying'
+            g.score++
+            setScore(g.score)
+            g.fx.push({
+              id: g.nid++,
+              text: `${s.targetLen} + ${s.shotLen} = 10!`,
+              x: gridOffX + (s.col + 0.5) * cell,
+              y: s.targetY,
+              t0: t, ok: true,
+            })
+          } else {
+            s.phase = 'wrong_flash'
+            g.fx.push({
+              id: g.nid++,
+              text: `${s.targetLen} + ${s.shotLen} = ${s.targetLen + s.shotLen}`,
+              x: gridOffX + (s.col + 0.5) * cell,
+              y: s.targetY - cell * 0.5,
+              t0: t, ok: false,
+            })
+          }
         } else if (s.phase === 'flying' && elapsed >= 800) {
           g.stack.push(s.targetColor)
+          s.phase = 'done'
+        } else if (s.phase === 'wrong_flash' && elapsed >= 800) {
+          s.phase = 'falling'
+          s.phaseStart = t
+        } else if (s.phase === 'falling' && elapsed >= 500) {
+          g.hp--
+          setHp(g.hp)
+          g.hurtUntil = t + 1200
+          g.fx.push({ id: g.nid++, text: '-1', x: gridOffX + (s.col + 0.5) * cell, y: groundY - cell, t0: t, ok: false })
+          if (g.hp <= 0) {
+            g.alive = false
+            if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
+            setPhase('over')
+          }
           s.phase = 'done'
         }
       }
       g.shots = g.shots.filter(s => s.phase !== 'done')
 
-      // Clean up
       g.fx = g.fx.filter(f => t - f.t0 < 1500)
-      g.beams = g.beams.filter(b => t - b.t0 < 300)
 
-      // Target hint
       const tgt = findTarget(g, groundY, cell)
       const tw = tgt?.len ?? null
       if (tw !== targetRef.current) { targetRef.current = tw; setTargetW(tw) }
@@ -328,16 +358,6 @@ export default function BlocksGame() {
         ctx.fillStyle = '#555'
         const topY = groundY - g.stack.length * stackItemH
         ctx.fillText(String(g.stack.length), gridOffX / 2, topY - 4)
-      }
-
-      // ── Beams (for misses) ──
-      for (const b of g.beams) {
-        const age = (t - b.t0) / 300
-        if (age >= 1) continue
-        ctx.globalAlpha = (1 - age) * 0.7
-        ctx.strokeStyle = b.color; ctx.lineWidth = 3
-        ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke()
-        ctx.globalAlpha = 1
       }
 
       // ── Falling planks ──
@@ -415,7 +435,6 @@ export default function BlocksGame() {
           const progress = Math.min(elapsed / 800, 1)
           const eased = 1 - Math.pow(1 - progress, 2)
 
-          // From merged position to stack position
           const fromX = gx + pad
           const fromY = s.targetY
           const fromH = 10 * cell
@@ -430,7 +449,6 @@ export default function BlocksGame() {
           const cw2 = fromW + (toW - fromW) * eased
           const ch2 = fromH + (toH - fromH) * eased
 
-          // Gold glow at start
           if (progress < 0.2) {
             const glow = 1 - progress / 0.2
             ctx.globalAlpha = glow * 0.5
@@ -442,7 +460,6 @@ export default function BlocksGame() {
           ctx.fillStyle = '#FFD700'
           rrect(ctx, cx, cy, cw2, ch2, 3); ctx.fill()
 
-          // "10" label fades as plank shrinks
           if (ch2 > cell * 1.5) {
             const labelAlpha = Math.max(0, 1 - eased * 1.5)
             if (labelAlpha > 0) {
@@ -455,10 +472,45 @@ export default function BlocksGame() {
             }
           }
         }
+
+        if (s.phase === 'wrong_flash') {
+          const combinedH = (s.targetLen + s.shotLen) * cell
+          const flash = Math.sin(elapsed / 80 * Math.PI)
+          ctx.globalAlpha = 0.6 + 0.4 * Math.abs(flash)
+          ctx.fillStyle = '#EF4444'
+          rrect(ctx, gx + pad, s.targetY, pw, combinedH, 4); ctx.fill()
+          ctx.globalAlpha = 1
+          // Sum label
+          const sum = s.targetLen + s.shotLen
+          const fs = Math.min(pw * 0.6, combinedH * 0.2)
+          ctx.font = `bold ${fs}px Arial`
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillStyle = '#fff'
+          ctx.fillText(`${s.targetLen}+${s.shotLen}=${sum}`, gx + cell / 2, s.targetY + combinedH / 2)
+        }
+
+        if (s.phase === 'falling') {
+          const progress = Math.min(elapsed / 500, 1)
+          const eased = progress * progress // accelerating fall
+          const combinedH = (s.targetLen + s.shotLen) * cell
+          const startY = s.targetY
+          const endY = groundY - cell * 0.3
+          const cy = startY + (endY - startY) * eased
+
+          ctx.fillStyle = '#EF4444'
+          rrect(ctx, gx + pad, cy, pw, combinedH, 4); ctx.fill()
+          const sum = s.targetLen + s.shotLen
+          const fs = Math.min(pw * 0.6, combinedH * 0.2)
+          ctx.font = `bold ${fs}px Arial`
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillStyle = '#fff'
+          ctx.fillText(`${sum}`, gx + cell / 2, cy + combinedH / 2)
+        }
       }
 
       // Character
-      drawChar(ctx, gridOffX + (g.charX + 0.5) * cell, groundY, cell)
+      const isHurt = t < g.hurtUntil
+      drawChar(ctx, gridOffX + (g.charX + 0.5) * cell, groundY, cell, isHurt)
 
       // Effects
       for (const f of g.fx) {
@@ -585,7 +637,6 @@ export default function BlocksGame() {
         style={{ touchAction: 'none' }}
       />
 
-      {/* Right panel: HP, score, hint, keypad */}
       <div className="flex flex-col items-center gap-2 p-2 pt-3 shrink-0" style={{ width: KEYPAD_W }}>
         <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">🪵{score}</div>
         <div className="flex flex-col items-center leading-none text-sm">
