@@ -4,12 +4,14 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 
 // ── Constants ──────────────────────────────────────────────
-const GRID_W = 10
+const MAX_GRID_W = 10
 const GRID_H = 30
 const STACK_CELLS = 2
 const INITIAL_HP = 10
-const BASE_SPEED = 50
-const SPEED_PER_POINT = 3
+const BASE_SPEED = 30
+const SPEED_PER_POINT = 1.5
+const POINTS_PER_LEVEL = 10
+const LEVEL_UP_MS = 2000
 const BASE_SPAWN_MS = 3500
 const MIN_SPAWN_MS = 1000
 const SPAWN_DEC = 120
@@ -40,14 +42,15 @@ interface Game {
   charX: number; score: number; hp: number
   nid: number; lastSpawn: number; alive: boolean
   hurtUntil: number
+  level: number; levelUpUntil: number
 }
 
 function mkGame(): Game {
   return {
     planks: [], fx: [], shots: [], stack: [],
-    charX: 4, score: 0, hp: INITIAL_HP,
+    charX: 0, score: 0, hp: INITIAL_HP,
     nid: 1, lastSpawn: 0, alive: true,
-    hurtUntil: 0,
+    hurtUntil: 0, level: 1, levelUpUntil: 0,
   }
 }
 
@@ -125,6 +128,8 @@ export default function BlocksGame() {
   const [hp, setHp] = useState(INITIAL_HP)
   const [targetW, setTargetW] = useState<number | null>(null)
   const [best, setBest] = useState(0)
+  const [level, setLevel] = useState(1)
+  const gridWRef = useRef(1)
 
   useEffect(() => {
     const s = localStorage.getItem('blocks-best')
@@ -135,9 +140,10 @@ export default function BlocksGame() {
     const cvs = canvasRef.current
     if (!cvs) return
     const resize = () => {
+      const gw = gridWRef.current
       const availW = window.innerWidth - KEYPAD_W - 12
       const availH = window.innerHeight - 4
-      const totalCols = STACK_CELLS + GRID_W
+      const totalCols = STACK_CELLS + gw
       const cell = Math.floor(Math.min(availW / totalCols, availH / GRID_H))
       const w = cell * totalCols
       const h = cell * GRID_H
@@ -150,24 +156,37 @@ export default function BlocksGame() {
     resize()
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
-  }, [phase])
+  }, [phase, level])
 
   const spawn = useCallback((g: Game) => {
-    const len = 2 + Math.floor(Math.random() * 7)
-    const x = Math.floor(Math.random() * GRID_W)
+    const gw = g.level
     const cell = cellRef.current
+    // Find columns that are free (no plank tail still in the top area)
+    const occupied = new Set<number>()
+    for (const p of g.planks) {
+      if (p.y < cell * 2) { // plank still near top
+        occupied.add(p.x)
+      }
+    }
+    const freeCols = []
+    for (let i = 0; i < gw; i++) if (!occupied.has(i)) freeCols.push(i)
+    if (freeCols.length === 0) return // all columns blocked
+
+    const maxLen = Math.min(8, 10 - 2) // complement must be at least 2
+    const len = 2 + Math.floor(Math.random() * (maxLen - 1))
+    const x = freeCols[Math.floor(Math.random() * freeCols.length)]
     g.planks.push({ id: g.nid++, len, x, y: -len * cell })
   }, [])
 
   const findTarget = useCallback((g: Game, groundY: number, cell: number): Plank | null => {
-    let best: Plank | null = null
+    let closest: Plank | null = null
     for (const p of g.planks) {
       const bottom = p.y + p.len * cell
-      if (Math.abs(g.charX - p.x) <= 1 && bottom < groundY) {
-        if (!best || bottom > best.y + best.len * cell) best = p
+      if (p.x === g.charX && bottom < groundY) {
+        if (!closest || bottom > closest.y + closest.len * cell) closest = p
       }
     }
-    return best
+    return closest
   }, [])
 
   const shoot = useCallback((n: number) => {
@@ -211,7 +230,8 @@ export default function BlocksGame() {
 
       const dpr = dprRef.current
       const cell = cellRef.current
-      const totalCols = STACK_CELLS + GRID_W
+      const gw = g.level
+      const totalCols = STACK_CELLS + gw
       const cw = cell * totalCols
       const ch = cell * GRID_H
       const gridOffX = STACK_CELLS * cell
@@ -223,9 +243,10 @@ export default function BlocksGame() {
       const pad = cell * 0.08
 
       const shooting = g.shots.length > 0
+      const levelingUp = t < g.levelUpUntil
 
-      // Freeze everything while shot animation plays
-      if (!shooting) {
+      // Freeze everything while shot animation or level-up plays
+      if (!shooting && !levelingUp) {
         for (const p of g.planks) p.y += fallSpeed * dt
 
         const dead: number[] = []
@@ -263,6 +284,16 @@ export default function BlocksGame() {
             s.phase = 'flying'
             g.score++
             setScore(g.score)
+            // Level up check
+            const newLevel = Math.min(MAX_GRID_W, 1 + Math.floor(g.score / POINTS_PER_LEVEL))
+            if (newLevel > g.level) {
+              g.level = newLevel
+              g.levelUpUntil = t + LEVEL_UP_MS
+              g.planks = [] // clear planks for new level
+              g.charX = Math.min(g.charX, newLevel - 1)
+              gridWRef.current = newLevel
+              setLevel(newLevel)
+            }
             g.fx.push({
               id: g.nid++,
               text: `${s.targetLen} + ${s.shotLen} = 10!`,
@@ -328,7 +359,7 @@ export default function BlocksGame() {
 
       // Grid lines
       ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1
-      for (let i = 1; i < GRID_W; i++) {
+      for (let i = 1; i < gw; i++) {
         ctx.beginPath()
         ctx.moveTo(gridOffX + i * cell, 0)
         ctx.lineTo(gridOffX + i * cell, groundY)
@@ -527,6 +558,69 @@ export default function BlocksGame() {
         ctx.globalAlpha = 1
       }
 
+      // Level-up celebration overlay
+      if (levelingUp) {
+        const elapsed = LEVEL_UP_MS - (g.levelUpUntil - t)
+        const progress = Math.min(elapsed / LEVEL_UP_MS, 1)
+
+        // Darken background
+        ctx.fillStyle = `rgba(0,0,0,${0.3 * Math.min(1, progress * 3)})`
+        ctx.fillRect(0, 0, cw, ch)
+
+        // Bounce-in scale
+        const scaleT = Math.min(elapsed / 400, 1)
+        const scale = scaleT < 1
+          ? 1 + 0.3 * Math.sin(scaleT * Math.PI)
+          : 1 + 0.05 * Math.sin((elapsed - 400) / 150)
+
+        // Fade out near end
+        const alpha = progress > 0.7 ? 1 - (progress - 0.7) / 0.3 : 1
+        ctx.globalAlpha = alpha
+
+        ctx.save()
+        const cx2 = cw / 2
+        const cy2 = ch * 0.4
+        ctx.translate(cx2, cy2)
+        ctx.scale(scale, scale)
+
+        // "LEVEL UP!" text
+        ctx.font = `bold ${cell * 1.8}px Arial`
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 4
+        ctx.strokeText('LEVEL UP!', 0, 0)
+        ctx.fillStyle = '#FFD700'
+        ctx.fillText('LEVEL UP!', 0, 0)
+
+        // Level number
+        ctx.font = `bold ${cell * 1.2}px Arial`
+        ctx.fillStyle = '#fff'
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 3
+        ctx.strokeText(`Level ${g.level}`, 0, cell * 2)
+        ctx.fillText(`Level ${g.level}`, 0, cell * 2)
+
+        // Stars
+        const starCount = 6
+        for (let i = 0; i < starCount; i++) {
+          const angle = (i / starCount) * Math.PI * 2 + elapsed * 0.002
+          const dist = cell * 3 + Math.sin(elapsed * 0.003 + i) * cell * 0.5
+          const sx = Math.cos(angle) * dist
+          const sy = Math.sin(angle) * dist
+          ctx.font = `${cell * 0.8}px Arial`
+          ctx.fillText('⭐', sx - cell * 0.4, sy + cell * 0.3)
+        }
+
+        ctx.restore()
+        ctx.globalAlpha = 1
+      }
+
+      // Level indicator
+      if (!levelingUp) {
+        ctx.font = `bold ${cell * 0.4}px Arial`
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'
+        ctx.fillText(`Lv.${g.level}`, gridOffX + 4, 4)
+      }
+
       ctx.restore()
       raf = requestAnimationFrame(loop)
     }
@@ -541,7 +635,7 @@ export default function BlocksGame() {
     const onKey = (e: KeyboardEvent) => {
       const g = gRef.current
       if (e.key === 'ArrowLeft') { g.charX = Math.max(0, g.charX - 1); e.preventDefault() }
-      else if (e.key === 'ArrowRight') { g.charX = Math.min(GRID_W - 1, g.charX + 1); e.preventDefault() }
+      else if (e.key === 'ArrowRight') { g.charX = Math.min(g.level - 1, g.charX + 1); e.preventDefault() }
       else if (e.key >= '2' && e.key <= '8') { shoot(parseInt(e.key)); e.preventDefault() }
     }
     window.addEventListener('keydown', onKey)
@@ -556,16 +650,17 @@ export default function BlocksGame() {
     const cell = cellRef.current
     const gridOffX = STACK_CELLS * cell
     const col = Math.floor((e.clientX - rect.left - gridOffX) / cell)
-    gRef.current.charX = Math.max(0, Math.min(GRID_W - 1, col))
+    gRef.current.charX = Math.max(0, Math.min(gRef.current.level - 1, col))
   }, [phase])
 
   const startGame = useCallback(() => {
     const g = mkGame()
     g.lastSpawn = performance.now()
     gRef.current = g
+    gridWRef.current = 1
     lastShotRef.current = 0
     targetRef.current = null
-    setScore(0); setHp(INITIAL_HP); setTargetW(null)
+    setScore(0); setHp(INITIAL_HP); setTargetW(null); setLevel(1)
     setPhase('play')
   }, [])
 
@@ -638,6 +733,7 @@ export default function BlocksGame() {
       />
 
       <div className="flex flex-col items-center gap-2 p-2 pt-3 shrink-0" style={{ width: KEYPAD_W }}>
+        <div className="text-xs font-bold text-purple-500 whitespace-nowrap">Lv.{level}</div>
         <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">🪵{score}</div>
         <div className="flex flex-col items-center leading-none text-sm">
           {Array.from({ length: INITIAL_HP }, (_, i) => (
