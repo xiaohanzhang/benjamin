@@ -1,15 +1,10 @@
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { createClient } from '@libsql/client'
+import { drizzle } from 'drizzle-orm/libsql'
 import * as schema from './schema'
-import { existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
 
-const dataDir = join(process.cwd(), 'data')
-if (!existsSync(dataDir)) {
-  mkdirSync(dataDir, { recursive: true })
-}
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+})
 
-const sqlite = new Database(join(dataDir, 'benjamin.db'))
-sqlite.pragma('journal_mode = WAL')
-
-export const db = drizzle(sqlite, { schema })
+export const db = drizzle(client, { schema })

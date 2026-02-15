@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",
-    "better-sqlite3": "^12.6.2",
+    "@libsql/client": "^0.17.0",
     "drizzle-orm": "^0.45.1",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
@@ -22,7 +22,6 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

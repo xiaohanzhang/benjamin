@@ -10,7 +10,7 @@ const publicRoutes = ['/signin', '/signup', '/'];
 
 export const proxy = auth(async (req: NextAuthRequest) => {
   const { nextUrl } = req;
-  if (!req.auth?.user && publicRoutes.includes(nextUrl.pathname)) {
+  if (!req.auth?.user && !publicRoutes.includes(nextUrl.pathname)) {
     return NextResponse.redirect(new URL('/signin', req.nextUrl))
   }
 
