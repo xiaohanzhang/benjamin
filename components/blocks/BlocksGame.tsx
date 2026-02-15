@@ -16,7 +16,7 @@ const BASE_SPAWN_MS = 3500
 const MIN_SPAWN_MS = 1000
 const SPAWN_DEC = 120
 const SHOT_CD = 400
-const KEYPAD_W = 56
+const KEYPAD_W = 72
 
 const COLORS: Record<number, string> = {
   2: '#EF4444', 3: '#F97316', 4: '#EAB308', 5: '#22C55E',
@@ -752,7 +752,7 @@ export default function BlocksGame() {
         style={{ touchAction: 'none' }}
       />
 
-      <div className="flex flex-col items-center gap-2 p-2 pt-3 shrink-0" style={{ width: KEYPAD_W }}>
+      <div className="flex flex-col items-center gap-3 p-2 pt-3 shrink-0" style={{ width: KEYPAD_W }}>
         <div className="text-xs font-bold text-purple-500 whitespace-nowrap">Lv.{level}</div>
         <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">🪵{score}</div>
         <div className="flex flex-col items-center leading-none text-sm">
@@ -771,8 +771,8 @@ export default function BlocksGame() {
           <button
             key={n}
             onClick={() => shoot(n)}
-            className="rounded-lg w-10 h-8 text-sm font-extrabold text-white
-              shadow active:scale-90 transition-all duration-150
+            className="rounded-xl w-14 h-12 text-xl font-extrabold text-white
+              shadow-md active:scale-90 transition-all duration-150
               cursor-pointer select-none"
             style={{ backgroundColor: COLORS[n] }}
           >
