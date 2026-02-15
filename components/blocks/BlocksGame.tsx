@@ -45,10 +45,13 @@ interface Game {
   level: number; levelUpUntil: number
 }
 
+function activeStart(lv: number) { return Math.floor((MAX_GRID_W - lv) / 2) }
+
 function mkGame(): Game {
+  const as = activeStart(1)
   return {
     planks: [], fx: [], shots: [], stack: [],
-    charX: 0, score: 0, hp: INITIAL_HP,
+    charX: as, score: 0, hp: INITIAL_HP,
     nid: 1, lastSpawn: 0, alive: true,
     hurtUntil: 0, level: 1, levelUpUntil: 0,
   }
@@ -129,7 +132,6 @@ export default function BlocksGame() {
   const [targetW, setTargetW] = useState<number | null>(null)
   const [best, setBest] = useState(0)
   const [level, setLevel] = useState(1)
-  const gridWRef = useRef(1)
 
   useEffect(() => {
     const s = localStorage.getItem('blocks-best')
@@ -140,10 +142,9 @@ export default function BlocksGame() {
     const cvs = canvasRef.current
     if (!cvs) return
     const resize = () => {
-      const gw = gridWRef.current
       const availW = window.innerWidth - KEYPAD_W - 12
       const availH = window.innerHeight - 4
-      const totalCols = STACK_CELLS + gw
+      const totalCols = STACK_CELLS + MAX_GRID_W
       const cell = Math.floor(Math.min(availW / totalCols, availH / GRID_H))
       const w = cell * totalCols
       const h = cell * GRID_H
@@ -156,23 +157,22 @@ export default function BlocksGame() {
     resize()
     window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
-  }, [phase, level])
+  }, [phase])
 
   const spawn = useCallback((g: Game) => {
     const gw = g.level
+    const as = activeStart(gw)
     const cell = cellRef.current
     // Find columns that are free (no plank tail still in the top area)
     const occupied = new Set<number>()
     for (const p of g.planks) {
-      if (p.y < cell * 2) { // plank still near top
-        occupied.add(p.x)
-      }
+      if (p.y < cell * 2) occupied.add(p.x)
     }
     const freeCols = []
-    for (let i = 0; i < gw; i++) if (!occupied.has(i)) freeCols.push(i)
-    if (freeCols.length === 0) return // all columns blocked
+    for (let i = as; i < as + gw; i++) if (!occupied.has(i)) freeCols.push(i)
+    if (freeCols.length === 0) return
 
-    const maxLen = Math.min(8, 10 - 2) // complement must be at least 2
+    const maxLen = Math.min(8, 10 - 2)
     const len = 2 + Math.floor(Math.random() * (maxLen - 1))
     const x = freeCols[Math.floor(Math.random() * freeCols.length)]
     g.planks.push({ id: g.nid++, len, x, y: -len * cell })
@@ -231,7 +231,8 @@ export default function BlocksGame() {
       const dpr = dprRef.current
       const cell = cellRef.current
       const gw = g.level
-      const totalCols = STACK_CELLS + gw
+      const as = activeStart(gw)
+      const totalCols = STACK_CELLS + MAX_GRID_W
       const cw = cell * totalCols
       const ch = cell * GRID_H
       const gridOffX = STACK_CELLS * cell
@@ -289,9 +290,9 @@ export default function BlocksGame() {
             if (newLevel > g.level) {
               g.level = newLevel
               g.levelUpUntil = t + LEVEL_UP_MS
-              g.planks = [] // clear planks for new level
-              g.charX = Math.min(g.charX, newLevel - 1)
-              gridWRef.current = newLevel
+              g.planks = []
+              const newAs = activeStart(newLevel)
+              g.charX = Math.max(newAs, Math.min(newAs + newLevel - 1, g.charX))
               setLevel(newLevel)
             }
             g.fx.push({
@@ -357,14 +358,31 @@ export default function BlocksGame() {
       ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(gridOffX, 0); ctx.lineTo(gridOffX, groundY); ctx.stroke()
 
-      // Grid lines
+      // Dark overlay on inactive columns (left side)
+      if (as > 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.75)'
+        ctx.fillRect(gridOffX, 0, as * cell, groundY)
+      }
+      // Dark overlay on inactive columns (right side)
+      if (as + gw < MAX_GRID_W) {
+        ctx.fillStyle = 'rgba(0,0,0,0.75)'
+        ctx.fillRect(gridOffX + (as + gw) * cell, 0, (MAX_GRID_W - as - gw) * cell, groundY)
+      }
+
+      // Grid lines (active area only)
       ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1
-      for (let i = 1; i < gw; i++) {
+      for (let i = as + 1; i < as + gw; i++) {
         ctx.beginPath()
         ctx.moveTo(gridOffX + i * cell, 0)
         ctx.lineTo(gridOffX + i * cell, groundY)
         ctx.stroke()
       }
+      // Active area borders
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(gridOffX + as * cell, 0); ctx.lineTo(gridOffX + as * cell, groundY)
+      ctx.moveTo(gridOffX + (as + gw) * cell, 0); ctx.lineTo(gridOffX + (as + gw) * cell, groundY)
+      ctx.stroke()
 
       // Ground
       ctx.fillStyle = '#8B5E3C'; ctx.fillRect(0, groundY, cw, cell)
@@ -634,8 +652,9 @@ export default function BlocksGame() {
     if (phase !== 'play') return
     const onKey = (e: KeyboardEvent) => {
       const g = gRef.current
-      if (e.key === 'ArrowLeft') { g.charX = Math.max(0, g.charX - 1); e.preventDefault() }
-      else if (e.key === 'ArrowRight') { g.charX = Math.min(g.level - 1, g.charX + 1); e.preventDefault() }
+      const as = activeStart(g.level)
+      if (e.key === 'ArrowLeft') { g.charX = Math.max(as, g.charX - 1); e.preventDefault() }
+      else if (e.key === 'ArrowRight') { g.charX = Math.min(as + g.level - 1, g.charX + 1); e.preventDefault() }
       else if (e.key >= '2' && e.key <= '8') { shoot(parseInt(e.key)); e.preventDefault() }
     }
     window.addEventListener('keydown', onKey)
@@ -649,15 +668,16 @@ export default function BlocksGame() {
     const rect = cvs.getBoundingClientRect()
     const cell = cellRef.current
     const gridOffX = STACK_CELLS * cell
+    const g = gRef.current
+    const as = activeStart(g.level)
     const col = Math.floor((e.clientX - rect.left - gridOffX) / cell)
-    gRef.current.charX = Math.max(0, Math.min(gRef.current.level - 1, col))
+    g.charX = Math.max(as, Math.min(as + g.level - 1, col))
   }, [phase])
 
   const startGame = useCallback(() => {
     const g = mkGame()
     g.lastSpawn = performance.now()
     gRef.current = g
-    gridWRef.current = 1
     lastShotRef.current = 0
     targetRef.current = null
     setScore(0); setHp(INITIAL_HP); setTargetW(null); setLevel(1)
