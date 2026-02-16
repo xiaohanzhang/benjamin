@@ -143,6 +143,61 @@ export async function getDashboardData(): Promise<DashboardData> {
   return { totalRounds: rows.length, overallAccuracy, dailyStats }
 }
 
+export interface BlocksGameEntry {
+  score: number
+  level: number
+  duration: number
+  datetime: string
+}
+
+export interface BlocksDailyStats {
+  date: string
+  gamesPlayed: number
+  avgScore: number
+  maxScore: number
+  minScore: number
+}
+
+export interface BlocksDashboardData {
+  games: BlocksGameEntry[]
+  dailyStats: BlocksDailyStats[]
+}
+
+export async function getBlocksDashboardData(): Promise<BlocksDashboardData> {
+  const userId = await requireUserId()
+  const rows = await db.select().from(blocksHistory).where(eq(blocksHistory.userId, userId))
+
+  const games: BlocksGameEntry[] = rows.map(r => ({
+    score: r.score,
+    level: r.level,
+    duration: r.duration,
+    datetime: new Date(r.timestamp).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    }),
+  }))
+
+  const byDate = new Map<string, { scores: number[]; count: number }>()
+  for (const r of rows) {
+    const date = new Date(r.timestamp).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric',
+    })
+    const entry = byDate.get(date) ?? { scores: [], count: 0 }
+    entry.scores.push(r.score)
+    entry.count++
+    byDate.set(date, entry)
+  }
+
+  const dailyStats: BlocksDailyStats[] = Array.from(byDate.entries()).map(([date, stats]) => ({
+    date,
+    gamesPlayed: stats.count,
+    avgScore: Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.count),
+    maxScore: Math.max(...stats.scores),
+    minScore: Math.min(...stats.scores),
+  }))
+
+  return { games, dailyStats }
+}
+
 export async function saveBlocksResult(result: {
   score: number
   level: number

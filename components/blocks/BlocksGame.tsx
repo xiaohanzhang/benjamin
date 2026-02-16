@@ -290,7 +290,7 @@ export default function BlocksGame() {
             g.score++
             setScore(g.score)
             // Level up check
-            const newLevel = Math.min(MAX_GRID_W, 1 + Math.floor(g.score / POINTS_PER_LEVEL))
+            const newLevel = 1 + Math.floor(g.score / POINTS_PER_LEVEL)
             if (newLevel > g.level) {
               g.level = newLevel
               g.levelUpUntil = t + LEVEL_UP_MS
