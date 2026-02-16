@@ -94,6 +94,17 @@ export const roundHistory = sqliteTable('round_history', {
   timestamp: integer('timestamp').notNull(),
 })
 
+export const blocksHistory = sqliteTable('blocks_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  score: integer('score').notNull(),
+  level: integer('level').notNull(),
+  duration: integer('duration').notNull(), // seconds
+  timestamp: integer('timestamp').notNull(),
+})
+
 export const questionHistory = sqliteTable('question_history', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: text('user_id')
