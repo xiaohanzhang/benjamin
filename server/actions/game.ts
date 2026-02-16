@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/server/db'
-import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory } from '@/server/db/schema'
+import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory, blocksHistory } from '@/server/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireUserId } from '@/server/auth-helpers'
 import type { GameState, DifficultyLevel, LeitnerBox, OperationType, QuestionRecord } from '@/types/game'
@@ -141,6 +141,21 @@ export async function getDashboardData(): Promise<DashboardData> {
   }))
 
   return { totalRounds: rows.length, overallAccuracy, dailyStats }
+}
+
+export async function saveBlocksResult(result: {
+  score: number
+  level: number
+  duration: number
+}): Promise<void> {
+  const userId = await requireUserId()
+  await db.insert(blocksHistory).values({
+    userId,
+    score: result.score,
+    level: result.level,
+    duration: result.duration,
+    timestamp: Date.now(),
+  })
 }
 
 export async function saveQuestionRecords(round: number, records: QuestionRecord[]): Promise<void> {

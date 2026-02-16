@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { saveBlocksResult } from '@/server/actions/game'
 
 // ── Constants ──────────────────────────────────────────────
 const MAX_GRID_W = 10
@@ -43,6 +44,7 @@ interface Game {
   nid: number; lastSpawn: number; alive: boolean
   hurtUntil: number
   level: number; levelUpUntil: number
+  startedAt: number
 }
 
 function activeStart(lv: number) { return Math.floor((MAX_GRID_W - lv) / 2) }
@@ -53,7 +55,7 @@ function mkGame(): Game {
     planks: [], fx: [], shots: [], stack: [],
     charX: as, score: 0, hp: INITIAL_HP,
     nid: 1, lastSpawn: 0, alive: true,
-    hurtUntil: 0, level: 1, levelUpUntil: 0,
+    hurtUntil: 0, level: 1, levelUpUntil: 0, startedAt: Date.now(),
   }
 }
 
@@ -265,6 +267,8 @@ export default function BlocksGame() {
           if (g.hp <= 0) {
             g.alive = false
             if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
+            const duration = Math.round((Date.now() - g.startedAt) / 1000)
+            saveBlocksResult({ score: g.score, level: g.level, duration })
             setPhase('over')
             return
           }
@@ -326,6 +330,8 @@ export default function BlocksGame() {
           if (g.hp <= 0) {
             g.alive = false
             if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
+            const duration = Math.round((Date.now() - g.startedAt) / 1000)
+            saveBlocksResult({ score: g.score, level: g.level, duration })
             setPhase('over')
           }
           s.phase = 'done'
