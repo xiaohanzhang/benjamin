@@ -11,9 +11,10 @@
  *  - Level-up: every POINTS_PER_LEVEL (10) points the active column count grows
  *    by 1 and a LEVEL_UP overlay plays.
  *  - Building upgrade: every PLANKS_PER_BUILDING (30) points the stacked planks
- *    combine into a house. 7 tiers total (Shack → Tool Shed → Simple House →
- *    Two-Story → Mansion → Estate → Castle). Game freezes for a 3.5 s
- *    three-phase animation (scatter → assemble → complete + bouncing label).
+ *    combine into a house. 7 tiers total (Shack → Cabin → House → Villa →
+ *    Mansion → Estate → Castle) rendered from PNG sprites in /public/blocks/.
+ *    Game freezes for a 3.5 s three-phase animation (scatter → assemble →
+ *    complete + bouncing label).
  *
  * Layout: single <canvas> whose width grows dynamically via stackCells().
  * Left side = building + gap + plank stack; right MAX_GRID_W columns = play area.
@@ -44,9 +45,9 @@ const MIN_SPAWN_MS = 1000
 const SPAWN_DEC = 120
 const SHOT_CD = 400
 const KEYPAD_W = 72
-const PLANKS_PER_BUILDING = 5
+const PLANKS_PER_BUILDING = 30
 const BUILDING_ANIM_MS = 3500
-const BUILDING_NAMES = ['Shack', 'Tool Shed', 'House', 'Two-Story', 'Mansion', 'Estate', 'Castle']
+const BUILDING_NAMES = ['Shack', 'Cabin', 'House', 'Villa', 'Mansion', 'Estate', 'Castle']
 // w × h in grid units — buildings grow each tier
 const BUILDING_SIZES: [number, number][] = [[1,1],[2,2],[3,3],[4,4],[5,5],[6,6],[7,7]]
 
@@ -159,292 +160,23 @@ function drawChar(ctx: CanvasRenderingContext2D, cx: number, groundY: number, ce
   }
 }
 
-// ── Building Drawing ──────────────────────────────────────
-// All draw functions take a bounding box (x, groundY, w, h) and fill it.
-// `groundY` is the bottom edge; the building occupies [groundY-h, groundY].
+// ── Building Images ───────────────────────────────────────
+// Preload PNGs from /blocks/ and render via drawImage.
+const BUILDING_FILES = ['shack', 'cabin', 'house', 'villa', 'mansion', 'estate', 'castle']
+const buildingImages: HTMLImageElement[] = []
+if (typeof window !== 'undefined') {
+  for (const name of BUILDING_FILES) {
+    const img = new Image()
+    img.src = `/blocks/${name}.png`
+    buildingImages.push(img)
+  }
+}
 
 function drawBuilding(ctx: CanvasRenderingContext2D, level: number, x: number, groundY: number, w: number, h: number) {
-  if (level <= 0) return
-  const draw = [drawShack, drawToolShed, drawSimpleHouse, drawTwoStory, drawMansion, drawEstate, drawCastle]
-  draw[Math.min(level, 7) - 1](ctx, x, groundY, w, h)
-}
-
-function drawShack(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const cx = x + w / 2
-  ctx.fillStyle = '#A0522D'
-  ctx.beginPath()
-  ctx.moveTo(cx, gy - h)
-  ctx.lineTo(x, gy)
-  ctx.lineTo(x + w, gy)
-  ctx.closePath()
-  ctx.fill()
-  ctx.strokeStyle = '#6B3A1F'; ctx.lineWidth = 1; ctx.stroke()
-  // Plank lines
-  ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 0.5
-  for (let i = 1; i < 4; i++) {
-    const t = i / 4
-    const ly = gy - h * (1 - t)
-    const half = (w * 0.45) * t
-    ctx.beginPath(); ctx.moveTo(cx - half, ly); ctx.lineTo(cx + half, ly); ctx.stroke()
-  }
-  // Door
-  ctx.fillStyle = '#5C3317'
-  ctx.fillRect(cx - w * 0.1, gy - h * 0.3, w * 0.2, h * 0.3)
-}
-
-function drawToolShed(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const roofH = h * 0.1
-  const bodyH = h - roofH
-  // Walls
-  ctx.fillStyle = '#A0522D'
-  ctx.fillRect(x, gy - bodyH, w, bodyH)
-  ctx.strokeStyle = '#6B3A1F'; ctx.lineWidth = 1
-  ctx.strokeRect(x, gy - bodyH, w, bodyH)
-  // Flat roof
-  ctx.fillStyle = '#6B3A1F'
-  ctx.fillRect(x - w * 0.05, gy - h, w * 1.1, roofH)
-  // Door
-  ctx.fillStyle = '#5C3317'
-  const dw = w * 0.3, dh = bodyH * 0.5
-  ctx.fillRect(x + (w - dw) / 2, gy - dh, dw, dh)
-  ctx.fillStyle = '#FFD700'
-  ctx.beginPath(); ctx.arc(x + w / 2 + dw * 0.3, gy - dh * 0.45, Math.max(1, w * 0.04), 0, Math.PI * 2); ctx.fill()
-}
-
-function drawSimpleHouse(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const roofH = h * 0.35
-  const bodyH = h - roofH
-  const cx = x + w / 2
-  // Walls
-  ctx.fillStyle = '#D2B48C'
-  ctx.fillRect(x, gy - bodyH, w, bodyH)
-  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
-  ctx.strokeRect(x, gy - bodyH, w, bodyH)
-  // Roof
-  ctx.fillStyle = '#8B0000'
-  ctx.beginPath()
-  ctx.moveTo(cx, gy - h)
-  ctx.lineTo(x - w * 0.05, gy - bodyH)
-  ctx.lineTo(x + w + w * 0.05, gy - bodyH)
-  ctx.closePath()
-  ctx.fill()
-  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
-  // Window
-  ctx.fillStyle = '#87CEEB'
-  const ww = w * 0.2, wh = bodyH * 0.3
-  ctx.fillRect(x + w * 0.12, gy - bodyH * 0.8, ww, wh)
-  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
-  ctx.strokeRect(x + w * 0.12, gy - bodyH * 0.8, ww, wh)
-  // Window cross
-  ctx.beginPath()
-  ctx.moveTo(x + w * 0.12 + ww / 2, gy - bodyH * 0.8)
-  ctx.lineTo(x + w * 0.12 + ww / 2, gy - bodyH * 0.8 + wh)
-  ctx.moveTo(x + w * 0.12, gy - bodyH * 0.8 + wh / 2)
-  ctx.lineTo(x + w * 0.12 + ww, gy - bodyH * 0.8 + wh / 2)
-  ctx.stroke()
-  // Door
-  ctx.fillStyle = '#5C3317'
-  const dw = w * 0.22, dh = bodyH * 0.5
-  ctx.fillRect(x + w * 0.6, gy - dh, dw, dh)
-  ctx.fillStyle = '#FFD700'
-  ctx.beginPath(); ctx.arc(x + w * 0.6 + dw * 0.8, gy - dh * 0.45, Math.max(1, w * 0.03), 0, Math.PI * 2); ctx.fill()
-}
-
-function drawTwoStory(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const roofH = h * 0.2
-  const bodyH = h - roofH
-  const cx = x + w / 2
-  // Walls
-  ctx.fillStyle = '#D2B48C'
-  ctx.fillRect(x, gy - bodyH, w, bodyH)
-  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
-  ctx.strokeRect(x, gy - bodyH, w, bodyH)
-  // Floor line
-  ctx.beginPath()
-  ctx.moveTo(x, gy - bodyH * 0.5)
-  ctx.lineTo(x + w, gy - bodyH * 0.5)
-  ctx.stroke()
-  // Roof
-  ctx.fillStyle = '#8B0000'
-  ctx.beginPath()
-  ctx.moveTo(cx, gy - h)
-  ctx.lineTo(x - w * 0.04, gy - bodyH)
-  ctx.lineTo(x + w + w * 0.04, gy - bodyH)
-  ctx.closePath()
-  ctx.fill()
-  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
-  // Windows — two on each floor
-  ctx.fillStyle = '#87CEEB'
-  const ww = w * 0.18, wh = bodyH * 0.15
-  for (let floor = 0; floor < 2; floor++) {
-    const fy = gy - bodyH * (floor === 0 ? 0.7 : 0.28)
-    ctx.fillRect(x + w * 0.1, fy, ww, wh)
-    ctx.fillRect(x + w * 0.72, fy, ww, wh)
-    ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
-    ctx.strokeRect(x + w * 0.1, fy, ww, wh)
-    ctx.strokeRect(x + w * 0.72, fy, ww, wh)
-  }
-  // Door
-  ctx.fillStyle = '#5C3317'
-  const dw = w * 0.2, dh = bodyH * 0.22
-  ctx.fillRect(cx - dw / 2, gy - dh, dw, dh)
-  ctx.fillStyle = '#FFD700'
-  ctx.beginPath(); ctx.arc(cx + dw * 0.3, gy - dh * 0.45, Math.max(1, w * 0.025), 0, Math.PI * 2); ctx.fill()
-}
-
-function drawMansion(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const roofH = h * 0.22
-  const bodyH = h - roofH
-  const cx = x + w / 2
-  // Main body
-  ctx.fillStyle = '#F5DEB3'
-  ctx.fillRect(x, gy - bodyH, w, bodyH)
-  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
-  ctx.strokeRect(x, gy - bodyH, w, bodyH)
-  // Columns
-  ctx.fillStyle = '#D2B48C'
-  const colW = w * 0.05
-  ctx.fillRect(x + w * 0.04, gy - bodyH * 0.92, colW, bodyH * 0.92)
-  ctx.fillRect(x + w - w * 0.04 - colW, gy - bodyH * 0.92, colW, bodyH * 0.92)
-  // Roof — pediment
-  ctx.fillStyle = '#8B0000'
-  ctx.beginPath()
-  ctx.moveTo(cx, gy - h)
-  ctx.lineTo(x - w * 0.02, gy - bodyH)
-  ctx.lineTo(x + w + w * 0.02, gy - bodyH)
-  ctx.closePath()
-  ctx.fill()
-  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
-  // Windows — 3 across
-  ctx.fillStyle = '#87CEEB'
-  const ww = w * 0.13, wh = bodyH * 0.22
-  for (let i = 0; i < 3; i++) {
-    const wx = x + w * 0.14 + i * w * 0.28
-    ctx.fillRect(wx, gy - bodyH * 0.72, ww, wh)
-    ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
-    ctx.strokeRect(wx, gy - bodyH * 0.72, ww, wh)
-  }
-  // Grand door
-  ctx.fillStyle = '#5C3317'
-  const dw = w * 0.16, dh = bodyH * 0.38
-  rrect(ctx, cx - dw / 2, gy - dh, dw, dh, 2); ctx.fill()
-  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.arc(cx, gy - dh, dw / 2, Math.PI, 0); ctx.stroke()
-}
-
-function drawEstate(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const cx = x + w / 2
-  // Side wings
-  const wingW = w * 0.22, wingH = h * 0.55
-  ctx.fillStyle = '#E8D5B7'
-  ctx.fillRect(x, gy - wingH, wingW, wingH)
-  ctx.fillRect(x + w - wingW, gy - wingH, wingW, wingH)
-  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
-  ctx.strokeRect(x, gy - wingH, wingW, wingH)
-  ctx.strokeRect(x + w - wingW, gy - wingH, wingW, wingH)
-  // Wing roofs
-  ctx.fillStyle = '#6B3A1F'
-  ctx.fillRect(x - w * 0.01, gy - wingH - h * 0.04, wingW + w * 0.02, h * 0.04)
-  ctx.fillRect(x + w - wingW - w * 0.01, gy - wingH - h * 0.04, wingW + w * 0.02, h * 0.04)
-  // Wing windows
-  ctx.fillStyle = '#87CEEB'
-  const sww = wingW * 0.45, swh = wingH * 0.22
-  ctx.fillRect(x + wingW * 0.28, gy - wingH * 0.7, sww, swh)
-  ctx.fillRect(x + w - wingW + wingW * 0.28, gy - wingH * 0.7, sww, swh)
-  // Main building
-  const mw = w * 0.5, mh = h * 0.85
-  const mx = cx - mw / 2
-  ctx.fillStyle = '#F5DEB3'
-  ctx.fillRect(mx, gy - mh, mw, mh)
-  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
-  ctx.strokeRect(mx, gy - mh, mw, mh)
-  // Main roof
-  const roofH = h * 0.15
-  ctx.fillStyle = '#8B0000'
-  ctx.beginPath()
-  ctx.moveTo(cx, gy - mh - roofH)
-  ctx.lineTo(mx - w * 0.02, gy - mh)
-  ctx.lineTo(mx + mw + w * 0.02, gy - mh)
-  ctx.closePath()
-  ctx.fill()
-  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
-  // Main windows
-  ctx.fillStyle = '#87CEEB'
-  const ww = mw * 0.22, wh = mh * 0.14
-  ctx.fillRect(mx + mw * 0.1, gy - mh * 0.65, ww, wh)
-  ctx.fillRect(mx + mw * 0.68, gy - mh * 0.65, ww, wh)
-  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
-  ctx.strokeRect(mx + mw * 0.1, gy - mh * 0.65, ww, wh)
-  ctx.strokeRect(mx + mw * 0.68, gy - mh * 0.65, ww, wh)
-  // Door
-  ctx.fillStyle = '#5C3317'
-  const dw = mw * 0.2, dh = mh * 0.26
-  rrect(ctx, cx - dw / 2, gy - dh, dw, dh, 2); ctx.fill()
-}
-
-function drawCastle(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
-  const cx = x + w / 2
-  // Towers
-  const towerW = w * 0.18, towerH = h * 0.95
-  ctx.fillStyle = '#A9A9A9'
-  ctx.fillRect(x, gy - towerH, towerW, towerH)
-  ctx.fillRect(x + w - towerW, gy - towerH, towerW, towerH)
-  ctx.strokeStyle = '#696969'; ctx.lineWidth = 1
-  ctx.strokeRect(x, gy - towerH, towerW, towerH)
-  ctx.strokeRect(x + w - towerW, gy - towerH, towerW, towerH)
-  // Battlements on towers
-  ctx.fillStyle = '#A9A9A9'
-  const bSize = Math.max(2, towerW * 0.28)
-  for (let i = 0; i < 3; i++) {
-    ctx.fillRect(x + i * bSize * 1.3, gy - towerH - bSize, bSize, bSize)
-    ctx.fillRect(x + w - towerW + i * bSize * 1.3, gy - towerH - bSize, bSize, bSize)
-  }
-  // Main wall
-  const wallH = h * 0.6
-  const wallW = w * 0.58
-  const wx = cx - wallW / 2
-  ctx.fillStyle = '#B8B8B8'
-  ctx.fillRect(wx, gy - wallH, wallW, wallH)
-  ctx.strokeStyle = '#696969'; ctx.lineWidth = 1
-  ctx.strokeRect(wx, gy - wallH, wallW, wallH)
-  // Battlements on wall
-  const wbSize = Math.max(2, wallW * 0.1)
-  for (let i = 0; i < 5; i++) {
-    if (i % 2 === 0) {
-      ctx.fillStyle = '#B8B8B8'
-      ctx.fillRect(wx + i * wbSize * 1.08, gy - wallH - wbSize, wbSize, wbSize)
-    }
-  }
-  // Tower windows (arrow slits)
-  ctx.fillStyle = '#333'
-  const slitW = Math.max(1, towerW * 0.15), slitH = towerH * 0.1
-  ctx.fillRect(x + towerW * 0.42, gy - towerH * 0.65, slitW, slitH)
-  ctx.fillRect(x + w - towerW + towerW * 0.42, gy - towerH * 0.65, slitW, slitH)
-  // Gate
-  ctx.fillStyle = '#5C3317'
-  const gw = wallW * 0.28, gh = wallH * 0.45
-  ctx.beginPath()
-  ctx.moveTo(cx - gw / 2, gy)
-  ctx.lineTo(cx - gw / 2, gy - gh)
-  ctx.arc(cx, gy - gh, gw / 2, Math.PI, 0)
-  ctx.lineTo(cx + gw / 2, gy)
-  ctx.closePath()
-  ctx.fill()
-  // Flags
-  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 1.5
-  const flagH = h * 0.1
-  const lPole = x + towerW / 2, rPole = x + w - towerW / 2
-  const poleTop = gy - towerH - bSize
-  ctx.beginPath(); ctx.moveTo(lPole, poleTop); ctx.lineTo(lPole, poleTop - flagH); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(rPole, poleTop); ctx.lineTo(rPole, poleTop - flagH); ctx.stroke()
-  ctx.fillStyle = '#DC2626'
-  for (const px of [lPole, rPole]) {
-    ctx.beginPath()
-    ctx.moveTo(px, poleTop - flagH)
-    ctx.lineTo(px + flagH * 0.7, poleTop - flagH * 0.65)
-    ctx.lineTo(px, poleTop - flagH * 0.3)
-    ctx.closePath()
-    ctx.fill()
+  if (level <= 0 || level > 7) return
+  const img = buildingImages[level - 1]
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, x, groundY - h, w, h)
   }
 }
 
