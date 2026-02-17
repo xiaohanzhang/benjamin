@@ -1,3 +1,27 @@
+/**
+ * BlocksGame — "Making 10" math game
+ *
+ * Gameplay: Numbered planks fall from above. The player moves a character
+ * underneath a plank and picks a number so the two sum to 10.
+ *
+ * Core systems:
+ *  - Falling & collision: planks descend at fallSpeed; hitting the ground costs HP.
+ *  - Shot animation (ShotAnim): rising → flying/wrong_flash → falling → done.
+ *    On hit the merged plank flies to the left-side stack area.
+ *  - Level-up: every POINTS_PER_LEVEL (10) points the active column count grows
+ *    by 1 and a LEVEL_UP overlay plays.
+ *  - Building upgrade: every PLANKS_PER_BUILDING (30) points the stacked planks
+ *    combine into a house. 7 tiers total (Shack → Tool Shed → Simple House →
+ *    Two-Story → Mansion → Estate → Castle). Game freezes for a 3.5 s
+ *    three-phase animation (scatter → assemble → complete + bouncing label).
+ *
+ * Layout: single <canvas> whose width grows dynamically via stackCells().
+ * Left side = building + gap + plank stack; right MAX_GRID_W columns = play area.
+ * Buildings are sized in cell units via BUILDING_SIZES (1×1 → 2×2 → 3×3 →
+ * 4×4 → 6×5 → 8×6 → 10×7). The canvas widens each tier so the building,
+ * a 1-cell gap, and a 2-cell plank stack all fit without overlap.
+ * A React DOM keypad sits to the right of the canvas (width KEYPAD_W).
+ */
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -7,7 +31,9 @@ import { saveBlocksResult } from '@/server/actions/game'
 // ── Constants ──────────────────────────────────────────────
 const MAX_GRID_W = 10
 const GRID_H = 30
-const STACK_CELLS = 2
+const MIN_STACK_CELLS = 2
+const STACK_PLANK_COLS = 2 // columns reserved for the plank stack
+const STACK_GAP = 1        // gap column between building and plank stack
 const INITIAL_HP = 10
 const BASE_SPEED = 20
 const SPEED_PER_POINT = 0.5
@@ -18,6 +44,11 @@ const MIN_SPAWN_MS = 1000
 const SPAWN_DEC = 120
 const SHOT_CD = 400
 const KEYPAD_W = 72
+const PLANKS_PER_BUILDING = 5
+const BUILDING_ANIM_MS = 3500
+const BUILDING_NAMES = ['Shack', 'Tool Shed', 'House', 'Two-Story', 'Mansion', 'Estate', 'Castle']
+// w × h in grid units — buildings grow each tier
+const BUILDING_SIZES: [number, number][] = [[1,1],[2,2],[3,3],[4,4],[5,5],[6,6],[7,7]]
 
 const COLORS: Record<number, string> = {
   2: '#EF4444', 3: '#F97316', 4: '#EAB308', 5: '#22C55E',
@@ -44,10 +75,18 @@ interface Game {
   nid: number; lastSpawn: number; alive: boolean
   hurtUntil: number
   level: number; levelUpUntil: number
+  buildingLevel: number; buildingUntil: number
   startedAt: number
 }
 
 function activeStart(lv: number) { return Math.floor((MAX_GRID_W - lv) / 2) }
+
+// Stack area widens as buildings grow: buildingW + gap + plank cols
+function stackCells(bLevel: number) {
+  if (bLevel <= 0) return MIN_STACK_CELLS
+  const bw = BUILDING_SIZES[Math.min(bLevel, 7) - 1][0]
+  return bw + STACK_GAP + STACK_PLANK_COLS
+}
 
 function mkGame(): Game {
   const as = activeStart(1)
@@ -55,7 +94,8 @@ function mkGame(): Game {
     planks: [], fx: [], shots: [], stack: [],
     charX: as, score: 0, hp: INITIAL_HP,
     nid: 1, lastSpawn: 0, alive: true,
-    hurtUntil: 0, level: 1, levelUpUntil: 0, startedAt: Date.now(),
+    hurtUntil: 0, level: 1, levelUpUntil: 0,
+    buildingLevel: 0, buildingUntil: 0, startedAt: Date.now(),
   }
 }
 
@@ -119,6 +159,295 @@ function drawChar(ctx: CanvasRenderingContext2D, cx: number, groundY: number, ce
   }
 }
 
+// ── Building Drawing ──────────────────────────────────────
+// All draw functions take a bounding box (x, groundY, w, h) and fill it.
+// `groundY` is the bottom edge; the building occupies [groundY-h, groundY].
+
+function drawBuilding(ctx: CanvasRenderingContext2D, level: number, x: number, groundY: number, w: number, h: number) {
+  if (level <= 0) return
+  const draw = [drawShack, drawToolShed, drawSimpleHouse, drawTwoStory, drawMansion, drawEstate, drawCastle]
+  draw[Math.min(level, 7) - 1](ctx, x, groundY, w, h)
+}
+
+function drawShack(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const cx = x + w / 2
+  ctx.fillStyle = '#A0522D'
+  ctx.beginPath()
+  ctx.moveTo(cx, gy - h)
+  ctx.lineTo(x, gy)
+  ctx.lineTo(x + w, gy)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#6B3A1F'; ctx.lineWidth = 1; ctx.stroke()
+  // Plank lines
+  ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 0.5
+  for (let i = 1; i < 4; i++) {
+    const t = i / 4
+    const ly = gy - h * (1 - t)
+    const half = (w * 0.45) * t
+    ctx.beginPath(); ctx.moveTo(cx - half, ly); ctx.lineTo(cx + half, ly); ctx.stroke()
+  }
+  // Door
+  ctx.fillStyle = '#5C3317'
+  ctx.fillRect(cx - w * 0.1, gy - h * 0.3, w * 0.2, h * 0.3)
+}
+
+function drawToolShed(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const roofH = h * 0.1
+  const bodyH = h - roofH
+  // Walls
+  ctx.fillStyle = '#A0522D'
+  ctx.fillRect(x, gy - bodyH, w, bodyH)
+  ctx.strokeStyle = '#6B3A1F'; ctx.lineWidth = 1
+  ctx.strokeRect(x, gy - bodyH, w, bodyH)
+  // Flat roof
+  ctx.fillStyle = '#6B3A1F'
+  ctx.fillRect(x - w * 0.05, gy - h, w * 1.1, roofH)
+  // Door
+  ctx.fillStyle = '#5C3317'
+  const dw = w * 0.3, dh = bodyH * 0.5
+  ctx.fillRect(x + (w - dw) / 2, gy - dh, dw, dh)
+  ctx.fillStyle = '#FFD700'
+  ctx.beginPath(); ctx.arc(x + w / 2 + dw * 0.3, gy - dh * 0.45, Math.max(1, w * 0.04), 0, Math.PI * 2); ctx.fill()
+}
+
+function drawSimpleHouse(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const roofH = h * 0.35
+  const bodyH = h - roofH
+  const cx = x + w / 2
+  // Walls
+  ctx.fillStyle = '#D2B48C'
+  ctx.fillRect(x, gy - bodyH, w, bodyH)
+  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
+  ctx.strokeRect(x, gy - bodyH, w, bodyH)
+  // Roof
+  ctx.fillStyle = '#8B0000'
+  ctx.beginPath()
+  ctx.moveTo(cx, gy - h)
+  ctx.lineTo(x - w * 0.05, gy - bodyH)
+  ctx.lineTo(x + w + w * 0.05, gy - bodyH)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
+  // Window
+  ctx.fillStyle = '#87CEEB'
+  const ww = w * 0.2, wh = bodyH * 0.3
+  ctx.fillRect(x + w * 0.12, gy - bodyH * 0.8, ww, wh)
+  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
+  ctx.strokeRect(x + w * 0.12, gy - bodyH * 0.8, ww, wh)
+  // Window cross
+  ctx.beginPath()
+  ctx.moveTo(x + w * 0.12 + ww / 2, gy - bodyH * 0.8)
+  ctx.lineTo(x + w * 0.12 + ww / 2, gy - bodyH * 0.8 + wh)
+  ctx.moveTo(x + w * 0.12, gy - bodyH * 0.8 + wh / 2)
+  ctx.lineTo(x + w * 0.12 + ww, gy - bodyH * 0.8 + wh / 2)
+  ctx.stroke()
+  // Door
+  ctx.fillStyle = '#5C3317'
+  const dw = w * 0.22, dh = bodyH * 0.5
+  ctx.fillRect(x + w * 0.6, gy - dh, dw, dh)
+  ctx.fillStyle = '#FFD700'
+  ctx.beginPath(); ctx.arc(x + w * 0.6 + dw * 0.8, gy - dh * 0.45, Math.max(1, w * 0.03), 0, Math.PI * 2); ctx.fill()
+}
+
+function drawTwoStory(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const roofH = h * 0.2
+  const bodyH = h - roofH
+  const cx = x + w / 2
+  // Walls
+  ctx.fillStyle = '#D2B48C'
+  ctx.fillRect(x, gy - bodyH, w, bodyH)
+  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
+  ctx.strokeRect(x, gy - bodyH, w, bodyH)
+  // Floor line
+  ctx.beginPath()
+  ctx.moveTo(x, gy - bodyH * 0.5)
+  ctx.lineTo(x + w, gy - bodyH * 0.5)
+  ctx.stroke()
+  // Roof
+  ctx.fillStyle = '#8B0000'
+  ctx.beginPath()
+  ctx.moveTo(cx, gy - h)
+  ctx.lineTo(x - w * 0.04, gy - bodyH)
+  ctx.lineTo(x + w + w * 0.04, gy - bodyH)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
+  // Windows — two on each floor
+  ctx.fillStyle = '#87CEEB'
+  const ww = w * 0.18, wh = bodyH * 0.15
+  for (let floor = 0; floor < 2; floor++) {
+    const fy = gy - bodyH * (floor === 0 ? 0.7 : 0.28)
+    ctx.fillRect(x + w * 0.1, fy, ww, wh)
+    ctx.fillRect(x + w * 0.72, fy, ww, wh)
+    ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
+    ctx.strokeRect(x + w * 0.1, fy, ww, wh)
+    ctx.strokeRect(x + w * 0.72, fy, ww, wh)
+  }
+  // Door
+  ctx.fillStyle = '#5C3317'
+  const dw = w * 0.2, dh = bodyH * 0.22
+  ctx.fillRect(cx - dw / 2, gy - dh, dw, dh)
+  ctx.fillStyle = '#FFD700'
+  ctx.beginPath(); ctx.arc(cx + dw * 0.3, gy - dh * 0.45, Math.max(1, w * 0.025), 0, Math.PI * 2); ctx.fill()
+}
+
+function drawMansion(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const roofH = h * 0.22
+  const bodyH = h - roofH
+  const cx = x + w / 2
+  // Main body
+  ctx.fillStyle = '#F5DEB3'
+  ctx.fillRect(x, gy - bodyH, w, bodyH)
+  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
+  ctx.strokeRect(x, gy - bodyH, w, bodyH)
+  // Columns
+  ctx.fillStyle = '#D2B48C'
+  const colW = w * 0.05
+  ctx.fillRect(x + w * 0.04, gy - bodyH * 0.92, colW, bodyH * 0.92)
+  ctx.fillRect(x + w - w * 0.04 - colW, gy - bodyH * 0.92, colW, bodyH * 0.92)
+  // Roof — pediment
+  ctx.fillStyle = '#8B0000'
+  ctx.beginPath()
+  ctx.moveTo(cx, gy - h)
+  ctx.lineTo(x - w * 0.02, gy - bodyH)
+  ctx.lineTo(x + w + w * 0.02, gy - bodyH)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
+  // Windows — 3 across
+  ctx.fillStyle = '#87CEEB'
+  const ww = w * 0.13, wh = bodyH * 0.22
+  for (let i = 0; i < 3; i++) {
+    const wx = x + w * 0.14 + i * w * 0.28
+    ctx.fillRect(wx, gy - bodyH * 0.72, ww, wh)
+    ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
+    ctx.strokeRect(wx, gy - bodyH * 0.72, ww, wh)
+  }
+  // Grand door
+  ctx.fillStyle = '#5C3317'
+  const dw = w * 0.16, dh = bodyH * 0.38
+  rrect(ctx, cx - dw / 2, gy - dh, dw, dh, 2); ctx.fill()
+  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.arc(cx, gy - dh, dw / 2, Math.PI, 0); ctx.stroke()
+}
+
+function drawEstate(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const cx = x + w / 2
+  // Side wings
+  const wingW = w * 0.22, wingH = h * 0.55
+  ctx.fillStyle = '#E8D5B7'
+  ctx.fillRect(x, gy - wingH, wingW, wingH)
+  ctx.fillRect(x + w - wingW, gy - wingH, wingW, wingH)
+  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
+  ctx.strokeRect(x, gy - wingH, wingW, wingH)
+  ctx.strokeRect(x + w - wingW, gy - wingH, wingW, wingH)
+  // Wing roofs
+  ctx.fillStyle = '#6B3A1F'
+  ctx.fillRect(x - w * 0.01, gy - wingH - h * 0.04, wingW + w * 0.02, h * 0.04)
+  ctx.fillRect(x + w - wingW - w * 0.01, gy - wingH - h * 0.04, wingW + w * 0.02, h * 0.04)
+  // Wing windows
+  ctx.fillStyle = '#87CEEB'
+  const sww = wingW * 0.45, swh = wingH * 0.22
+  ctx.fillRect(x + wingW * 0.28, gy - wingH * 0.7, sww, swh)
+  ctx.fillRect(x + w - wingW + wingW * 0.28, gy - wingH * 0.7, sww, swh)
+  // Main building
+  const mw = w * 0.5, mh = h * 0.85
+  const mx = cx - mw / 2
+  ctx.fillStyle = '#F5DEB3'
+  ctx.fillRect(mx, gy - mh, mw, mh)
+  ctx.strokeStyle = '#8B7355'; ctx.lineWidth = 1
+  ctx.strokeRect(mx, gy - mh, mw, mh)
+  // Main roof
+  const roofH = h * 0.15
+  ctx.fillStyle = '#8B0000'
+  ctx.beginPath()
+  ctx.moveTo(cx, gy - mh - roofH)
+  ctx.lineTo(mx - w * 0.02, gy - mh)
+  ctx.lineTo(mx + mw + w * 0.02, gy - mh)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#6B0000'; ctx.lineWidth = 1; ctx.stroke()
+  // Main windows
+  ctx.fillStyle = '#87CEEB'
+  const ww = mw * 0.22, wh = mh * 0.14
+  ctx.fillRect(mx + mw * 0.1, gy - mh * 0.65, ww, wh)
+  ctx.fillRect(mx + mw * 0.68, gy - mh * 0.65, ww, wh)
+  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 0.8
+  ctx.strokeRect(mx + mw * 0.1, gy - mh * 0.65, ww, wh)
+  ctx.strokeRect(mx + mw * 0.68, gy - mh * 0.65, ww, wh)
+  // Door
+  ctx.fillStyle = '#5C3317'
+  const dw = mw * 0.2, dh = mh * 0.26
+  rrect(ctx, cx - dw / 2, gy - dh, dw, dh, 2); ctx.fill()
+}
+
+function drawCastle(ctx: CanvasRenderingContext2D, x: number, gy: number, w: number, h: number) {
+  const cx = x + w / 2
+  // Towers
+  const towerW = w * 0.18, towerH = h * 0.95
+  ctx.fillStyle = '#A9A9A9'
+  ctx.fillRect(x, gy - towerH, towerW, towerH)
+  ctx.fillRect(x + w - towerW, gy - towerH, towerW, towerH)
+  ctx.strokeStyle = '#696969'; ctx.lineWidth = 1
+  ctx.strokeRect(x, gy - towerH, towerW, towerH)
+  ctx.strokeRect(x + w - towerW, gy - towerH, towerW, towerH)
+  // Battlements on towers
+  ctx.fillStyle = '#A9A9A9'
+  const bSize = Math.max(2, towerW * 0.28)
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(x + i * bSize * 1.3, gy - towerH - bSize, bSize, bSize)
+    ctx.fillRect(x + w - towerW + i * bSize * 1.3, gy - towerH - bSize, bSize, bSize)
+  }
+  // Main wall
+  const wallH = h * 0.6
+  const wallW = w * 0.58
+  const wx = cx - wallW / 2
+  ctx.fillStyle = '#B8B8B8'
+  ctx.fillRect(wx, gy - wallH, wallW, wallH)
+  ctx.strokeStyle = '#696969'; ctx.lineWidth = 1
+  ctx.strokeRect(wx, gy - wallH, wallW, wallH)
+  // Battlements on wall
+  const wbSize = Math.max(2, wallW * 0.1)
+  for (let i = 0; i < 5; i++) {
+    if (i % 2 === 0) {
+      ctx.fillStyle = '#B8B8B8'
+      ctx.fillRect(wx + i * wbSize * 1.08, gy - wallH - wbSize, wbSize, wbSize)
+    }
+  }
+  // Tower windows (arrow slits)
+  ctx.fillStyle = '#333'
+  const slitW = Math.max(1, towerW * 0.15), slitH = towerH * 0.1
+  ctx.fillRect(x + towerW * 0.42, gy - towerH * 0.65, slitW, slitH)
+  ctx.fillRect(x + w - towerW + towerW * 0.42, gy - towerH * 0.65, slitW, slitH)
+  // Gate
+  ctx.fillStyle = '#5C3317'
+  const gw = wallW * 0.28, gh = wallH * 0.45
+  ctx.beginPath()
+  ctx.moveTo(cx - gw / 2, gy)
+  ctx.lineTo(cx - gw / 2, gy - gh)
+  ctx.arc(cx, gy - gh, gw / 2, Math.PI, 0)
+  ctx.lineTo(cx + gw / 2, gy)
+  ctx.closePath()
+  ctx.fill()
+  // Flags
+  ctx.strokeStyle = '#5C3317'; ctx.lineWidth = 1.5
+  const flagH = h * 0.1
+  const lPole = x + towerW / 2, rPole = x + w - towerW / 2
+  const poleTop = gy - towerH - bSize
+  ctx.beginPath(); ctx.moveTo(lPole, poleTop); ctx.lineTo(lPole, poleTop - flagH); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(rPole, poleTop); ctx.lineTo(rPole, poleTop - flagH); ctx.stroke()
+  ctx.fillStyle = '#DC2626'
+  for (const px of [lPole, rPole]) {
+    ctx.beginPath()
+    ctx.moveTo(px, poleTop - flagH)
+    ctx.lineTo(px + flagH * 0.7, poleTop - flagH * 0.65)
+    ctx.lineTo(px, poleTop - flagH * 0.3)
+    ctx.closePath()
+    ctx.fill()
+  }
+}
+
 // ── Component ──────────────────────────────────────────────
 export default function BlocksGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -132,34 +461,33 @@ export default function BlocksGame() {
   const [score, setScore] = useState(0)
   const [hp, setHp] = useState(INITIAL_HP)
   const [targetW, setTargetW] = useState<number | null>(null)
-  const [best, setBest] = useState(0)
+  const defaultBest = typeof window !== 'undefined' ? localStorage.getItem('blocks-best') : null
+  const [best, setBest] = useState(defaultBest ? parseInt(defaultBest) : 0)
   const [level, setLevel] = useState(1)
+  const [buildingLevel, setBuildingLevel] = useState(0)
 
-  useEffect(() => {
-    const s = localStorage.getItem('blocks-best')
-    if (s) setBest(parseInt(s))
+  const resizeCanvas = useCallback(() => {
+    const cvs = canvasRef.current
+    if (!cvs) return
+    const sc = stackCells(gRef.current.buildingLevel)
+    const availW = window.innerWidth - KEYPAD_W - 12
+    const availH = window.innerHeight - 4
+    const totalCols = sc + MAX_GRID_W
+    const cell = Math.floor(Math.min(availW / totalCols, availH / GRID_H))
+    const w = cell * totalCols
+    const h = cell * GRID_H
+    const dpr = window.devicePixelRatio || 1
+    dprRef.current = dpr
+    cellRef.current = cell
+    cvs.width = w * dpr; cvs.height = h * dpr
+    cvs.style.width = `${w}px`; cvs.style.height = `${h}px`
   }, [])
 
   useEffect(() => {
-    const cvs = canvasRef.current
-    if (!cvs) return
-    const resize = () => {
-      const availW = window.innerWidth - KEYPAD_W - 12
-      const availH = window.innerHeight - 4
-      const totalCols = STACK_CELLS + MAX_GRID_W
-      const cell = Math.floor(Math.min(availW / totalCols, availH / GRID_H))
-      const w = cell * totalCols
-      const h = cell * GRID_H
-      const dpr = window.devicePixelRatio || 1
-      dprRef.current = dpr
-      cellRef.current = cell
-      cvs.width = w * dpr; cvs.height = h * dpr
-      cvs.style.width = `${w}px`; cvs.style.height = `${h}px`
-    }
-    resize()
-    window.addEventListener('resize', resize)
-    return () => window.removeEventListener('resize', resize)
-  }, [phase])
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+    return () => window.removeEventListener('resize', resizeCanvas)
+  }, [phase, resizeCanvas])
 
   const spawn = useCallback((g: Game) => {
     const gw = g.level
@@ -234,22 +562,25 @@ export default function BlocksGame() {
       const cell = cellRef.current
       const gw = g.level
       const as = activeStart(gw)
-      const totalCols = STACK_CELLS + MAX_GRID_W
+      const sc = stackCells(g.buildingLevel)
+      const totalCols = sc + MAX_GRID_W
       const cw = cell * totalCols
       const ch = cell * GRID_H
-      const gridOffX = STACK_CELLS * cell
+      const gridOffX = sc * cell
       const groundY = (GRID_H - 1) * cell
       const fallSpeed = BASE_SPEED + g.score * SPEED_PER_POINT
       const stackItemH = cell * 0.4
-      const stackW = cell * 1.5
-      const stackX = (gridOffX - stackW) / 2
+      const stackW = cell * STACK_PLANK_COLS * 0.75
+      // Stack planks go in the rightmost STACK_PLANK_COLS of the stack area
+      const stackX = gridOffX - STACK_PLANK_COLS * cell + (STACK_PLANK_COLS * cell - stackW) / 2
       const pad = cell * 0.08
 
       const shooting = g.shots.length > 0
       const levelingUp = t < g.levelUpUntil
+      const buildingUp = t < g.buildingUntil
 
-      // Freeze everything while shot animation or level-up plays
-      if (!shooting && !levelingUp) {
+      // Freeze everything while shot animation, level-up, or building plays
+      if (!shooting && !levelingUp && !buildingUp) {
         for (const p of g.planks) p.y += fallSpeed * dt
 
         const dead: number[] = []
@@ -298,6 +629,15 @@ export default function BlocksGame() {
               const newAs = activeStart(newLevel)
               g.charX = Math.max(newAs, Math.min(newAs + newLevel - 1, g.charX))
               setLevel(newLevel)
+            }
+            // Building milestone check
+            if (g.score % PLANKS_PER_BUILDING === 0 && g.buildingLevel < 7) {
+              g.buildingLevel++
+              g.buildingUntil = t + BUILDING_ANIM_MS
+              g.stack = []
+              g.planks = []
+              setBuildingLevel(g.buildingLevel)
+              resizeCanvas() // widen canvas for larger building
             }
             g.fx.push({
               id: g.nid++,
@@ -398,7 +738,21 @@ export default function BlocksGame() {
       ctx.fillStyle = 'rgba(255,255,100,0.08)'
       ctx.fillRect(gridOffX + g.charX * cell, 0, cell, groundY)
 
-      // ── Stack ──
+      // ── Building + Stack ──
+      // Building on the left (sized in cell units); plank stack on the right.
+      const buildMargin = cell * 0.3
+      if (g.buildingLevel > 0 && !buildingUp) {
+        const [bwu, bhu] = BUILDING_SIZES[g.buildingLevel - 1]
+        const bw = bwu * cell, bh = bhu * cell
+        const bx = buildMargin
+        drawBuilding(ctx, g.buildingLevel, bx, groundY, bw, bh)
+        // Building name label
+        ctx.font = `bold ${Math.max(cell * 0.35, 8)}px Arial`
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+        ctx.fillStyle = '#5C3317'
+        ctx.fillText(BUILDING_NAMES[g.buildingLevel - 1], bx + bw / 2, groundY - bh - 2)
+      }
+      // Stack planks — right side of stack area (unchanged position)
       for (let i = 0; i < g.stack.length; i++) {
         const sy = groundY - (i + 1) * stackItemH
         if (sy < 0) break
@@ -412,7 +766,7 @@ export default function BlocksGame() {
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
         ctx.fillStyle = '#555'
         const topY = groundY - g.stack.length * stackItemH
-        ctx.fillText(String(g.stack.length), gridOffX / 2, topY - 4)
+        ctx.fillText(`${g.stack.length}/${PLANKS_PER_BUILDING}`, stackX + stackW / 2, topY - 4)
       }
 
       // ── Falling planks ──
@@ -582,6 +936,102 @@ export default function BlocksGame() {
         ctx.globalAlpha = 1
       }
 
+      // Building animation overlay
+      if (buildingUp) {
+        const elapsed = BUILDING_ANIM_MS - (g.buildingUntil - t)
+        const progress = Math.min(elapsed / BUILDING_ANIM_MS, 1)
+
+        // Darken background
+        ctx.fillStyle = `rgba(0,0,0,${0.35 * Math.min(1, progress * 4)})`
+        ctx.fillRect(0, 0, cw, ch)
+
+        const [bwu, bhu] = BUILDING_SIZES[g.buildingLevel - 1]
+        const abw = bwu * cell, abh = bhu * cell
+        const abx = buildMargin
+
+        if (elapsed < 600) {
+          // Phase 1: Planks shimmer/scatter
+          const phase1 = elapsed / 600
+          const plankCount = 8
+          for (let i = 0; i < plankCount; i++) {
+            const angle = (i / plankCount) * Math.PI * 2 + elapsed * 0.005
+            const scatter = (1 - phase1) * cell * 2
+            const px = abx + abw / 2 + Math.cos(angle) * scatter
+            const py = groundY - abh / 2 + Math.sin(angle) * scatter
+            const alpha = 0.3 + 0.7 * phase1
+            ctx.globalAlpha = alpha
+            ctx.fillStyle = '#A0522D'
+            rrect(ctx, px - cell * 0.3, py - cell * 0.1, cell * 0.6, cell * 0.2, 2); ctx.fill()
+            ctx.globalAlpha = 1
+          }
+        } else if (elapsed < 2500) {
+          // Phase 2: Assembly — house builds bottom-up
+          const phase2 = (elapsed - 600) / 1900
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(abx - 5, groundY - abh * phase2, abw + 10, abh * phase2 + 5)
+          ctx.clip()
+          drawBuilding(ctx, g.buildingLevel, abx, groundY, abw, abh)
+          ctx.restore()
+          // Construction particles
+          if (phase2 < 0.9) {
+            const buildLine = groundY - abh * phase2
+            for (let i = 0; i < 4; i++) {
+              const sparkX = abx + Math.random() * abw
+              const sparkY = buildLine + Math.random() * cell * 0.5
+              ctx.fillStyle = `rgba(255,200,50,${0.5 + Math.random() * 0.5})`
+              ctx.beginPath(); ctx.arc(sparkX, sparkY, 1.5 + Math.random() * 1.5, 0, Math.PI * 2); ctx.fill()
+            }
+          }
+        } else {
+          // Phase 3: Complete house + name label bounce-in + sparkles
+          const phase3 = (elapsed - 2500) / 1000
+          const scaleT = Math.min(phase3 * 2, 1)
+          const bounce = scaleT < 1
+            ? 1 + 0.15 * Math.sin(scaleT * Math.PI)
+            : 1
+
+          const centerX = abx + abw / 2
+          const centerY = groundY - abh / 2
+
+          ctx.save()
+          ctx.translate(centerX, centerY)
+          ctx.scale(bounce, bounce)
+          ctx.translate(-centerX, -centerY)
+          drawBuilding(ctx, g.buildingLevel, abx, groundY, abw, abh)
+          ctx.restore()
+
+          // Name label
+          const labelAlpha = Math.min(phase3 * 3, 1)
+          ctx.globalAlpha = labelAlpha
+          const labelScale = scaleT < 1 ? 0.8 + 0.2 * scaleT : 1
+          ctx.save()
+          ctx.translate(centerX, groundY - abh - cell * 0.4)
+          ctx.scale(labelScale, labelScale)
+          ctx.font = `bold ${cell * 0.45}px Arial`
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 3
+          ctx.strokeText(BUILDING_NAMES[g.buildingLevel - 1], 0, 0)
+          ctx.fillStyle = '#FFD700'
+          ctx.fillText(BUILDING_NAMES[g.buildingLevel - 1], 0, 0)
+          ctx.restore()
+          ctx.globalAlpha = 1
+
+          // Sparkles
+          for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2 + elapsed * 0.003
+            const dist = Math.max(abw, abh) * 0.5 + Math.sin(elapsed * 0.004 + i) * cell * 0.3
+            const sx = centerX + Math.cos(angle) * dist
+            const sy = centerY + Math.sin(angle) * dist * 0.6
+            const sparkAlpha = 0.5 + 0.5 * Math.sin(elapsed * 0.01 + i * 2)
+            ctx.globalAlpha = sparkAlpha
+            ctx.fillStyle = '#FFD700'
+            ctx.beginPath(); ctx.arc(sx, sy, 2 + Math.sin(elapsed * 0.008 + i) * 1.5, 0, Math.PI * 2); ctx.fill()
+            ctx.globalAlpha = 1
+          }
+        }
+      }
+
       // Level-up celebration overlay
       if (levelingUp) {
         const elapsed = LEVEL_UP_MS - (g.levelUpUntil - t)
@@ -651,7 +1101,7 @@ export default function BlocksGame() {
 
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
-  }, [phase, spawn, findTarget, best])
+  }, [phase, spawn, findTarget, best, resizeCanvas])
 
   // Keyboard
   useEffect(() => {
@@ -673,8 +1123,8 @@ export default function BlocksGame() {
     if (!cvs) return
     const rect = cvs.getBoundingClientRect()
     const cell = cellRef.current
-    const gridOffX = STACK_CELLS * cell
     const g = gRef.current
+    const gridOffX = stackCells(g.buildingLevel) * cell
     const as = activeStart(g.level)
     const col = Math.floor((e.clientX - rect.left - gridOffX) / cell)
     g.charX = Math.max(as, Math.min(as + g.level - 1, col))
@@ -686,7 +1136,7 @@ export default function BlocksGame() {
     gRef.current = g
     lastShotRef.current = 0
     targetRef.current = null
-    setScore(0); setHp(INITIAL_HP); setTargetW(null); setLevel(1)
+    setScore(0); setHp(INITIAL_HP); setTargetW(null); setLevel(1); setBuildingLevel(0)
     setPhase('play')
   }, [])
 
@@ -761,6 +1211,9 @@ export default function BlocksGame() {
       <div className="flex flex-col items-center gap-3 p-2 pt-3 shrink-0" style={{ width: KEYPAD_W }}>
         <div className="text-xs font-bold text-purple-500 whitespace-nowrap">Lv.{level}</div>
         <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">🪵{score}</div>
+        {buildingLevel > 0 && (
+          <div className="text-xs font-bold text-amber-700 whitespace-nowrap">🏠{BUILDING_NAMES[buildingLevel - 1]}</div>
+        )}
         <div className="flex flex-col items-center leading-none text-sm">
           {Array.from({ length: INITIAL_HP }, (_, i) => (
             <span key={i}>{i < hp ? '❤️' : '🖤'}</span>
