@@ -143,9 +143,9 @@ export function tick(g: Game, dt: number, t: number, cell: number): TickResult {
         s.phase = 'flying'
         g.score++
         result.scoreChanged = true
-        // Level up check
+        // Level up check (cap at MAX_GRID_W — no level-up beyond that)
         const newLevel = 1 + Math.floor(g.score / POINTS_PER_LEVEL)
-        if (newLevel > g.level) {
+        if (newLevel > g.level && g.level < MAX_GRID_W) {
           g.level = newLevel
           g.levelUpUntil = t + LEVEL_UP_MS
           g.planks = []

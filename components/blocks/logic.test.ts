@@ -342,8 +342,8 @@ describe('tick', () => {
       expect(g.planks).toEqual([]) // planks cleared on level up
     })
 
-    it('caps active columns at MAX_GRID_W even for levels beyond 10', () => {
-      // Set score so level will go from 10 to 11 — columns should stay at 10
+    it('does not level up beyond MAX_GRID_W', () => {
+      // At level 10 (max), score crossing the next boundary should NOT trigger level-up
       const g = game({ score: POINTS_PER_LEVEL * 10 - 1, level: 10, charX: 0 })
       g.shots.push({
         id: 2, shotLen: 3, shotColor: COLORS[3],
@@ -353,11 +353,8 @@ describe('tick', () => {
       })
       const t = 700
       const result = tick(g, 0, t, CELL)
-      expect(g.level).toBe(11) // level still increments
-      expect(result.levelChanged).toBe(true)
-      // charX should remain valid within 0..(MAX_GRID_W-1)
-      expect(g.charX).toBeGreaterThanOrEqual(0)
-      expect(g.charX).toBeLessThan(MAX_GRID_W)
+      expect(g.level).toBe(10) // stays at 10
+      expect(result.levelChanged).toBe(false)
     })
 
     it('triggers building milestone when score crosses PLANKS_PER_BUILDING boundary', () => {
