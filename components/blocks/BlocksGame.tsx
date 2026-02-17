@@ -15,10 +15,11 @@ import {
   MAX_GRID_W, GRID_H, INITIAL_HP, SHOT_CD,
   BUILDING_NAMES, COLORS,
 } from './constants'
-import { activeStart, stackCells, mkGame, tryShoot, tick } from './logic'
+import { activeStart, gridWidth, stackCells, mkGame, tryShoot, tick } from './logic'
 import { renderFrame } from './renderer'
 
-const KEYPAD_W = 72
+const KEYPAD_W_MIN = 72
+const KEYPAD_PAD = 16 // horizontal padding around keypad buttons
 
 export default function BlocksGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -36,20 +37,38 @@ export default function BlocksGame() {
   const [best, setBest] = useState(defaultBest ? parseInt(defaultBest) : 0)
   const [level, setLevel] = useState(1)
   const [buildingLevel, setBuildingLevel] = useState(0)
+  const [cellSize, setCellSize] = useState(20)
+  const [keypadW, setKeypadW] = useState(KEYPAD_W_MIN)
 
   const resizeCanvas = useCallback(() => {
     const cvs = canvasRef.current
     if (!cvs) return
     const sc = stackCells(gRef.current.buildingLevel)
-    const availW = window.innerWidth - KEYPAD_W - 12
     const availH = window.innerHeight - 4
     const totalCols = sc + MAX_GRID_W
-    const cell = Math.floor(Math.min(availW / totalCols, availH / GRID_H))
+    // Try wider keypad first: keypadW = 8 * cell + padding
+    // cell * totalCols + 8 * cell + padding + 12 <= windowW
+    // cell * (totalCols + 8) <= windowW - padding - 12
+    let cell = Math.floor(Math.min(
+      (window.innerWidth - KEYPAD_PAD - 12) / (totalCols + 8),
+      availH / GRID_H,
+    ))
+    let kw = 8 * cell + KEYPAD_PAD
+    if (kw < KEYPAD_W_MIN) {
+      // Screen too narrow for wide buttons, fall back to compact keypad
+      cell = Math.floor(Math.min(
+        (window.innerWidth - KEYPAD_W_MIN - 12) / totalCols,
+        availH / GRID_H,
+      ))
+      kw = KEYPAD_W_MIN
+    }
     const w = cell * totalCols
     const h = cell * GRID_H
     const dpr = window.devicePixelRatio || 1
     dprRef.current = dpr
     cellRef.current = cell
+    setCellSize(cell)
+    setKeypadW(kw)
     cvs.width = w * dpr; cvs.height = h * dpr
     cvs.style.width = `${w}px`; cvs.style.height = `${h}px`
   }, [])
@@ -122,9 +141,10 @@ export default function BlocksGame() {
     if (phase !== 'play') return
     const onKey = (e: KeyboardEvent) => {
       const g = gRef.current
+      const gw = gridWidth(g.level)
       const as = activeStart(g.level)
       if (e.key === 'ArrowLeft') { g.charX = Math.max(as, g.charX - 1); e.preventDefault() }
-      else if (e.key === 'ArrowRight') { g.charX = Math.min(as + g.level - 1, g.charX + 1); e.preventDefault() }
+      else if (e.key === 'ArrowRight') { g.charX = Math.min(as + gw - 1, g.charX + 1); e.preventDefault() }
       else if (e.key >= '2' && e.key <= '8') { shoot(parseInt(e.key)); e.preventDefault() }
     }
     window.addEventListener('keydown', onKey)
@@ -139,9 +159,10 @@ export default function BlocksGame() {
     const cell = cellRef.current
     const g = gRef.current
     const gridOffX = stackCells(g.buildingLevel) * cell
+    const gw = gridWidth(g.level)
     const as = activeStart(g.level)
     const col = Math.floor((e.clientX - rect.left - gridOffX) / cell)
-    g.charX = Math.max(as, Math.min(as + g.level - 1, col))
+    g.charX = Math.max(as, Math.min(as + gw - 1, col))
   }, [phase])
 
   const startGame = useCallback(() => {
@@ -222,7 +243,7 @@ export default function BlocksGame() {
         style={{ touchAction: 'none' }}
       />
 
-      <div className="flex flex-col items-center gap-3 p-2 pt-3 shrink-0" style={{ width: KEYPAD_W }}>
+      <div className="flex flex-col items-center gap-2 p-2 pt-3 shrink-0" style={{ width: keypadW }}>
         <div className="text-xs font-bold text-purple-500 whitespace-nowrap">Lv.{level}</div>
         <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">🪵{score}</div>
         {buildingLevel > 0 && (
@@ -240,18 +261,41 @@ export default function BlocksGame() {
             </span>
           )}
         </div>
-        {[2, 3, 4, 5, 6, 7, 8].map(n => (
-          <button
-            key={n}
-            onClick={() => shoot(n)}
-            className="rounded-xl w-14 h-12 text-xl font-extrabold text-white
-              shadow-md active:scale-90 transition-all duration-150
-              cursor-pointer select-none"
-            style={{ backgroundColor: COLORS[n] }}
-          >
-            {n}
-          </button>
-        ))}
+        {keypadW > KEYPAD_W_MIN ? (
+          // Wide keypad: buttons sized proportionally with grid cells
+          [2, 3, 4, 5, 6, 7, 8].map(n => (
+            <button
+              key={n}
+              onClick={() => shoot(n)}
+              className="rounded-lg font-extrabold text-white
+                shadow-md active:scale-95 transition-all duration-150
+                cursor-pointer select-none relative overflow-hidden"
+              style={{
+                backgroundColor: COLORS[n],
+                width: n * cellSize,
+                height: cellSize,
+                fontSize: Math.max(cellSize * 0.45, 12),
+                backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent ${cellSize - 1}px, rgba(255,255,255,0.35) ${cellSize - 1}px, rgba(255,255,255,0.35) ${cellSize}px)`,
+              }}
+            >
+              {n}
+            </button>
+          ))
+        ) : (
+          // Compact keypad fallback
+          [2, 3, 4, 5, 6, 7, 8].map(n => (
+            <button
+              key={n}
+              onClick={() => shoot(n)}
+              className="rounded-xl w-14 h-12 text-xl font-extrabold text-white
+                shadow-md active:scale-90 transition-all duration-150
+                cursor-pointer select-none"
+              style={{ backgroundColor: COLORS[n] }}
+            >
+              {n}
+            </button>
+          ))
+        )}
       </div>
     </div>
   )

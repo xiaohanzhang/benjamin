@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeStart, stackCells, mkGame, spawn, findTarget, tryShoot, tick } from './logic'
+import { activeStart, gridWidth, stackCells, mkGame, spawn, findTarget, tryShoot, tick } from './logic'
 import type { Game } from './types'
 import {
   MAX_GRID_W, GRID_H, INITIAL_HP, BASE_SPEED, SPEED_PER_POINT,
@@ -17,6 +17,21 @@ function game(overrides: Partial<Game> = {}): Game {
   return { ...mkGame(), ...overrides }
 }
 
+// ── gridWidth ───────────────────────────────────────────────
+
+describe('gridWidth', () => {
+  it('returns level when below MAX_GRID_W', () => {
+    expect(gridWidth(1)).toBe(1)
+    expect(gridWidth(5)).toBe(5)
+  })
+
+  it('caps at MAX_GRID_W', () => {
+    expect(gridWidth(MAX_GRID_W)).toBe(MAX_GRID_W)
+    expect(gridWidth(15)).toBe(MAX_GRID_W)
+    expect(gridWidth(100)).toBe(MAX_GRID_W)
+  })
+})
+
 // ── activeStart ─────────────────────────────────────────────
 
 describe('activeStart', () => {
@@ -32,6 +47,11 @@ describe('activeStart', () => {
   it('centers 5 columns', () => {
     // (10 - 5) / 2 = 2
     expect(activeStart(5)).toBe(2)
+  })
+
+  it('clamps at 0 for levels beyond MAX_GRID_W', () => {
+    expect(activeStart(15)).toBe(0)
+    expect(activeStart(100)).toBe(0)
   })
 })
 
@@ -320,6 +340,24 @@ describe('tick', () => {
       expect(result.levelChanged).toBe(true)
       expect(g.levelUpUntil).toBe(t + LEVEL_UP_MS)
       expect(g.planks).toEqual([]) // planks cleared on level up
+    })
+
+    it('caps active columns at MAX_GRID_W even for levels beyond 10', () => {
+      // Set score so level will go from 10 to 11 — columns should stay at 10
+      const g = game({ score: POINTS_PER_LEVEL * 10 - 1, level: 10, charX: 0 })
+      g.shots.push({
+        id: 2, shotLen: 3, shotColor: COLORS[3],
+        targetLen: 7, targetColor: COLORS[7],
+        col: 0, charCol: 0, phase: 'rising', phaseStart: 0,
+        targetY: 100, stackIdx: 0, hit: true,
+      })
+      const t = 700
+      const result = tick(g, 0, t, CELL)
+      expect(g.level).toBe(11) // level still increments
+      expect(result.levelChanged).toBe(true)
+      // charX should remain valid within 0..(MAX_GRID_W-1)
+      expect(g.charX).toBeGreaterThanOrEqual(0)
+      expect(g.charX).toBeLessThan(MAX_GRID_W)
     })
 
     it('triggers building milestone when score crosses PLANKS_PER_BUILDING boundary', () => {

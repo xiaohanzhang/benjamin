@@ -11,7 +11,7 @@ import {
   PLANKS_PER_BUILDING, BUILDING_ANIM_MS, LEVEL_UP_MS,
   BUILDING_NAMES, BUILDING_SIZES, COLORS,
 } from './constants'
-import { activeStart, stackCells, findTarget } from './logic'
+import { activeStart, gridWidth, stackCells, findTarget } from './logic'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -95,11 +95,43 @@ function drawBuilding(ctx: CanvasRenderingContext2D, level: number, x: number, g
   }
 }
 
+/** Draw a plank with grid-cell dividers. Vertical orientation: w is 1 cell wide, h = len * cell. */
+function drawGridPlank(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number,
+  len: number, color: string, r: number,
+) {
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.06)'
+  rrect(ctx, x + 2, y + 2, w, h, r); ctx.fill()
+  // Fill
+  ctx.fillStyle = color
+  rrect(ctx, x, y, w, h, r); ctx.fill()
+  // Border
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1
+  rrect(ctx, x, y, w, h, r); ctx.stroke()
+  // Grid dividers between cells
+  const cellH = h / len
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1
+  for (let i = 1; i < len; i++) {
+    const ly = y + i * cellH
+    ctx.beginPath(); ctx.moveTo(x + 2, ly); ctx.lineTo(x + w - 2, ly); ctx.stroke()
+  }
+  // Number label
+  const fontSize = Math.min(w * 0.7, cellH * 0.6)
+  ctx.font = `bold ${fontSize}px Arial`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 2
+  ctx.strokeText(String(len), x + w / 2, y + h / 2)
+  ctx.fillStyle = '#fff'
+  ctx.fillText(String(len), x + w / 2, y + h / 2)
+}
+
 // ── Main Render ──────────────────────────────────────────────
 
 export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, cell: number, dpr: number) {
-  const gw = g.level
-  const as = activeStart(gw)
+  const gw = gridWidth(g.level)
+  const as = activeStart(g.level)
   const sc = stackCells(g.buildingLevel)
   const totalCols = sc + MAX_GRID_W
   const cw = cell * totalCols
@@ -201,19 +233,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, c
     const px = gridOffX + p.x * cell + pad
     const pw = cell - pad * 2
     const ph = p.len * cell
-    ctx.fillStyle = 'rgba(0,0,0,0.06)'
-    rrect(ctx, px + 2, p.y + 2, pw, ph, 4); ctx.fill()
-    ctx.fillStyle = COLORS[p.len]
-    rrect(ctx, px, p.y, pw, ph, 4); ctx.fill()
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1
-    rrect(ctx, px, p.y, pw, ph, 4); ctx.stroke()
-    const fontSize = Math.min(pw * 0.7, ph * 0.25)
-    ctx.font = `bold ${fontSize}px Arial`
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 2
-    ctx.strokeText(String(p.len), gridOffX + p.x * cell + cell / 2, p.y + ph / 2)
-    ctx.fillStyle = '#fff'
-    ctx.fillText(String(p.len), gridOffX + p.x * cell + cell / 2, p.y + ph / 2)
+    drawGridPlank(ctx, px, p.y, pw, ph, p.len, COLORS[p.len], 4)
   }
 
   // ── Hint on targeted plank ──
@@ -240,13 +260,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, c
       const eased = 1 - Math.pow(1 - progress, 3)
 
       // Frozen target plank
-      ctx.fillStyle = s.targetColor
-      rrect(ctx, gx + pad, s.targetY, pw, s.targetLen * cell, 4); ctx.fill()
-      const tfs = Math.min(pw * 0.7, s.targetLen * cell * 0.25)
-      ctx.font = `bold ${tfs}px Arial`
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillStyle = '#fff'
-      ctx.fillText(String(s.targetLen), gx + cell / 2, s.targetY + s.targetLen * cell / 2)
+      drawGridPlank(ctx, gx + pad, s.targetY, pw, s.targetLen * cell, s.targetLen, s.targetColor, 4)
 
       // Rising shot plank
       const shotH = s.shotLen * cell
@@ -257,15 +271,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, c
       const endX = gx + pad
       const shotX = startX + (endX - startX) * eased
 
-      ctx.fillStyle = 'rgba(0,0,0,0.06)'
-      rrect(ctx, shotX + 2, shotTopY + 2, pw, shotH, 4); ctx.fill()
-      ctx.fillStyle = s.shotColor
-      rrect(ctx, shotX, shotTopY, pw, shotH, 4); ctx.fill()
-      const sfs = Math.min(pw * 0.7, shotH * 0.25)
-      ctx.font = `bold ${sfs}px Arial`
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillStyle = '#fff'
-      ctx.fillText(String(s.shotLen), shotX + pw / 2, shotTopY + shotH / 2)
+      drawGridPlank(ctx, shotX, shotTopY, pw, shotH, s.shotLen, s.shotColor, 4)
     }
 
     if (s.phase === 'flying') {

@@ -14,7 +14,10 @@ import {
   BUILDING_ANIM_MS, BUILDING_SIZES, COLORS,
 } from './constants'
 
-export function activeStart(lv: number) { return Math.floor((MAX_GRID_W - lv) / 2) }
+/** Effective number of active columns (capped at MAX_GRID_W). */
+export function gridWidth(level: number) { return Math.min(level, MAX_GRID_W) }
+
+export function activeStart(lv: number) { return Math.floor((MAX_GRID_W - gridWidth(lv)) / 2) }
 
 /** Stack area widens as buildings grow: buildingW + gap + plank cols */
 export function stackCells(bLevel: number) {
@@ -35,8 +38,8 @@ export function mkGame(): Game {
 }
 
 export function spawn(g: Game, cell: number) {
-  const gw = g.level
-  const as = activeStart(gw)
+  const gw = gridWidth(g.level)
+  const as = activeStart(g.level)
   // Find columns that are free (no plank tail still in the top area)
   const occupied = new Set<number>()
   for (const p of g.planks) {
@@ -146,8 +149,9 @@ export function tick(g: Game, dt: number, t: number, cell: number): TickResult {
           g.level = newLevel
           g.levelUpUntil = t + LEVEL_UP_MS
           g.planks = []
+          const newGw = gridWidth(newLevel)
           const newAs = activeStart(newLevel)
-          g.charX = Math.max(newAs, Math.min(newAs + newLevel - 1, g.charX))
+          g.charX = Math.max(newAs, Math.min(newAs + newGw - 1, g.charX))
           result.levelChanged = true
         }
         // Building milestone check
