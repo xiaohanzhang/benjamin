@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { mkGame, generateBar, spawn, findTarget, tryShoot, tick, barHeight, barWidth } from './logic'
+import { mkGame, generateBar, spawn, findTarget, tryShoot, tick, barHeight, barWidth, gridWidth, cannonTier } from './logic'
 import type { Game } from './types'
 import {
-  GRID_W, GRID_H, INITIAL_HP, BASE_SPEED, SPEED_PER_POINT,
-  BASE_SPAWN_MS, MIN_SPAWN_MS, SPAWN_DEC, COLORS,
+  START_GRID_W, MAX_GRID_W, GRID_H, INITIAL_HP, BASE_SPEED, SPEED_PER_POINT,
+  BASE_SPAWN_MS, MIN_SPAWN_MS, SPAWN_DEC, COLORS, POINTS_PER_LEVEL, CANNON_FILES,
 } from './constants'
 
 const CELL = 20
 const GROUND_Y = (GRID_H - 1) * CELL
+const GW = gridWidth(1) // level 1 grid width (2)
 
 /** Create a fresh Game with optional overrides. */
 function game(overrides: Partial<Game> = {}): Game {
@@ -25,8 +26,47 @@ describe('mkGame', () => {
     expect(g.bars).toEqual([])
     expect(g.fx).toEqual([])
     expect(g.shots).toEqual([])
-    expect(g.cannonX).toBe(Math.floor(GRID_W / 2))
+    expect(g.cannonX).toBe(Math.floor(gridWidth(1) / 2))
     expect(g.nid).toBe(1)
+  })
+})
+
+// -- gridWidth --
+
+describe('gridWidth', () => {
+  it('starts at START_GRID_W for level 1', () => {
+    expect(gridWidth(1)).toBe(START_GRID_W)
+  })
+
+  it('grows by 2 each level', () => {
+    expect(gridWidth(2)).toBe(4)
+    expect(gridWidth(3)).toBe(6)
+    expect(gridWidth(5)).toBe(10)
+  })
+
+  it('caps at MAX_GRID_W', () => {
+    expect(gridWidth(10)).toBe(MAX_GRID_W)
+    expect(gridWidth(15)).toBe(MAX_GRID_W)
+  })
+})
+
+// -- cannonTier --
+
+describe('cannonTier', () => {
+  it('starts at tier 0 for level 1', () => {
+    expect(cannonTier(1)).toBe(0)
+  })
+
+  it('evolves every 2 levels', () => {
+    expect(cannonTier(2)).toBe(0)
+    expect(cannonTier(3)).toBe(1)
+    expect(cannonTier(4)).toBe(1)
+    expect(cannonTier(5)).toBe(2)
+  })
+
+  it('caps at max tier', () => {
+    expect(cannonTier(15)).toBe(CANNON_FILES.length - 1)
+    expect(cannonTier(100)).toBe(CANNON_FILES.length - 1)
   })
 })
 
@@ -63,16 +103,18 @@ describe('barWidth', () => {
 
 describe('generateBar', () => {
   it('produces bars with total 4-10', () => {
+    const gw = gridWidth(5)
     for (let i = 0; i < 100; i++) {
-      const bar = generateBar(i, CELL)
+      const bar = generateBar(i, CELL, gw)
       expect(bar.total).toBeGreaterThanOrEqual(4)
       expect(bar.total).toBeLessThanOrEqual(10)
     }
   })
 
   it('produces valid splits where partA + partB = total, both > 1', () => {
+    const gw = gridWidth(5)
     for (let i = 0; i < 100; i++) {
-      const bar = generateBar(i, CELL)
+      const bar = generateBar(i, CELL, gw)
       expect(bar.partA + bar.partB).toBe(bar.total)
       expect(bar.partA).toBeGreaterThanOrEqual(2)
       expect(bar.partB).toBeGreaterThanOrEqual(2)
@@ -80,15 +122,16 @@ describe('generateBar', () => {
   })
 
   it('places bar in valid column (2-col bar fits within grid)', () => {
+    const gw = gridWidth(5)
     for (let i = 0; i < 50; i++) {
-      const bar = generateBar(i, CELL)
+      const bar = generateBar(i, CELL, gw)
       expect(bar.x).toBeGreaterThanOrEqual(0)
-      expect(bar.x + barWidth(bar)).toBeLessThanOrEqual(GRID_W)
+      expect(bar.x + barWidth(bar)).toBeLessThanOrEqual(gw)
     }
   })
 
   it('starts bar above the viewport using barHeight', () => {
-    const bar = generateBar(1, CELL)
+    const bar = generateBar(1, CELL, gridWidth(5))
     expect(bar.y).toBeLessThan(0)
     expect(bar.y).toBe(-barHeight(bar) * CELL)
   })
@@ -99,24 +142,27 @@ describe('generateBar', () => {
 describe('spawn', () => {
   it('adds a bar to the game', () => {
     const g = game()
-    spawn(g, CELL)
+    const gw = gridWidth(5)
+    spawn(g, CELL, gw)
     expect(g.bars).toHaveLength(1)
   })
 
   it('increments nid', () => {
     const g = game()
+    const gw = gridWidth(5)
     const before = g.nid
-    spawn(g, CELL)
+    spawn(g, CELL, gw)
     expect(g.nid).toBe(before + 1)
   })
 
   it('does nothing when all columns are occupied near the top', () => {
     const g = game()
-    for (let i = 0; i < GRID_W; i++) {
+    const gw = gridWidth(5)
+    for (let i = 0; i < gw; i++) {
       g.bars.push({ id: g.nid++, total: 5, partA: 2, partB: 3, x: i, y: 0 })
     }
     const before = g.bars.length
-    spawn(g, CELL)
+    spawn(g, CELL, gw)
     expect(g.bars).toHaveLength(before)
   })
 })
@@ -393,6 +439,33 @@ describe('tick', () => {
       tick(g, 0, 1500, CELL)
       expect(g.fx).toHaveLength(1)
       expect(g.fx[0].text).toBe('new')
+    })
+  })
+
+  describe('level-up', () => {
+    it('levels up when score reaches POINTS_PER_LEVEL', () => {
+      const g = game({ score: POINTS_PER_LEVEL - 1 })
+      g.shots.push({
+        id: 2, num: 7, col: 0, charCol: 0,
+        phase: 'rising', phaseStart: 0,
+        targetY: 100,
+        targetBar: { id: 99, total: 7, partA: 3, partB: 4, x: 0, y: 100 },
+        exact: true,
+      })
+      g.bars.push({ id: 10, total: 5, partA: 2, partB: 3, x: 0, y: 200 })
+      const result = tick(g, 0, 500, CELL)
+      expect(g.level).toBe(2)
+      expect(result.levelChanged).toBe(true)
+      expect(g.bars).toHaveLength(0) // bars cleared on level-up
+    })
+
+    it('does not freeze bars during level-up (freeze handled by levelUpUntil)', () => {
+      const g = game({ level: 2 })
+      g.levelUpUntil = 2000
+      g.bars.push({ id: 1, total: 5, partA: 2, partB: 3, x: 0, y: 100 })
+      g.lastSpawn = 99999
+      tick(g, 0.05, 1500, CELL) // t < levelUpUntil → frozen
+      expect(g.bars[0].y).toBe(100) // didn't move
     })
   })
 

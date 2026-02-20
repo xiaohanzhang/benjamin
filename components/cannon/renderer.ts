@@ -6,8 +6,8 @@
  */
 
 import type { Game, Bar } from './types'
-import { GRID_W, GRID_H, COLORS } from './constants'
-import { findTarget, barHeight, barWidth } from './logic'
+import { GRID_H, COLORS, CANNON_FILES } from './constants'
+import { findTarget, barHeight, barWidth, cannonTier } from './logic'
 
 // -- Helpers --
 
@@ -25,25 +25,42 @@ function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
   c.closePath()
 }
 
+// -- Cannon Sprites --
+
+const cannonImages: HTMLImageElement[] = []
+if (typeof window !== 'undefined') {
+  for (const name of CANNON_FILES) {
+    const img = new Image()
+    img.src = `/cannon/${name}.png`
+    cannonImages.push(img)
+  }
+}
+
 /** Draw the cannon turret at position (cx, groundY). */
-function drawCannon(ctx: CanvasRenderingContext2D, cx: number, groundY: number, cell: number) {
+function drawCannon(ctx: CanvasRenderingContext2D, cx: number, groundY: number, cell: number, tier: number) {
+  const img = cannonImages[tier]
+  if (img && img.complete && img.naturalWidth > 0) {
+    // Sprite: draw centered on cx, bottom at groundY + cell (include ground row)
+    const spriteW = Math.max(3, 2 + tier * 0.4) * cell
+    const aspect = img.naturalHeight / img.naturalWidth
+    const spriteH = spriteW * aspect
+    ctx.drawImage(img, cx - spriteW / 2, groundY + cell - spriteH, spriteW, spriteH)
+    return
+  }
+  // Fallback: procedural cannon
   const w = cell * 0.6
   const h = cell * 0.8
-  // Base
   ctx.fillStyle = '#475569'
   rrect(ctx, cx - w / 2, groundY - h, w, h, 4)
   ctx.fill()
-  // Barrel
   const barrelW = cell * 0.2
   const barrelH = cell * 0.5
   ctx.fillStyle = '#334155'
   ctx.fillRect(cx - barrelW / 2, groundY - h - barrelH, barrelW, barrelH)
-  // Barrel tip
   ctx.fillStyle = '#F59E0B'
   ctx.beginPath()
   ctx.arc(cx, groundY - h - barrelH, barrelW * 0.6, 0, Math.PI * 2)
   ctx.fill()
-  // Wheels
   ctx.fillStyle = '#1E293B'
   ctx.beginPath()
   ctx.arc(cx - w * 0.3, groundY, cell * 0.12, 0, Math.PI * 2)
@@ -188,8 +205,11 @@ function drawRemainderBar(
 
 // -- Main Render --
 
-export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, cell: number, dpr: number) {
-  const cw = cell * GRID_W
+export function renderFrame(
+  ctx: CanvasRenderingContext2D, g: Game, t: number,
+  cell: number, dpr: number, gridW: number,
+) {
+  const cw = cell * gridW
   const ch = cell * GRID_H
   const groundY = (GRID_H - 1) * cell
   const pad = cell * 0.08
@@ -205,7 +225,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, c
 
   // Grid lines
   ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1
-  for (let i = 1; i < GRID_W; i++) {
+  for (let i = 1; i < gridW; i++) {
     ctx.beginPath()
     ctx.moveTo(i * cell, 0); ctx.lineTo(i * cell, groundY)
     ctx.stroke()
@@ -307,13 +327,14 @@ export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, c
   }
 
   // Cannon
+  const tier = cannonTier(g.level)
   const isHurt = t < g.hurtUntil
   const cannonCx = (g.cannonX + 0.5) * cell
   if (isHurt) {
     const shake = Math.sin(t * 0.03) * 2
-    drawCannon(ctx, cannonCx + shake, groundY, cell)
+    drawCannon(ctx, cannonCx + shake, groundY, cell, tier)
   } else {
-    drawCannon(ctx, cannonCx, groundY, cell)
+    drawCannon(ctx, cannonCx, groundY, cell, tier)
   }
 
   // FX text
@@ -328,6 +349,44 @@ export function renderFrame(ctx: CanvasRenderingContext2D, g: Game, t: number, c
     ctx.strokeText(f.text, f.x, fy)
     ctx.fillStyle = f.ok ? '#16A34A' : '#DC2626'
     ctx.fillText(f.text, f.x, fy)
+    ctx.globalAlpha = 1
+  }
+
+  // Level-up overlay
+  if (t < g.levelUpUntil) {
+    const elapsed = g.levelUpUntil - t
+    const total = 2000
+    const progress = 1 - elapsed / total
+    ctx.fillStyle = `rgba(0,0,0,${0.4 * (1 - progress)})`
+    ctx.fillRect(0, 0, cw, ch)
+
+    const scale = 0.5 + 0.5 * Math.min(1, progress * 3)
+    const textY = ch * 0.35
+    ctx.save()
+    ctx.translate(cw / 2, textY)
+    ctx.scale(scale, scale)
+    ctx.font = `bold ${cell * 1.5}px Arial`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4
+    ctx.strokeText('LEVEL UP!', 0, 0)
+    ctx.fillStyle = '#FFD700'
+    ctx.fillText('LEVEL UP!', 0, 0)
+    ctx.font = `bold ${cell * 0.8}px Arial`
+    ctx.strokeText(`Level ${g.level}`, 0, cell * 1.8)
+    ctx.fillStyle = '#fff'
+    ctx.fillText(`Level ${g.level}`, 0, cell * 1.8)
+    ctx.restore()
+
+    // Orbiting stars
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 + progress * Math.PI * 4
+      const dist = cell * 3
+      const sx = cw / 2 + Math.cos(angle) * dist
+      const sy = textY + Math.sin(angle) * dist * 0.5
+      ctx.fillStyle = '#FFD700'
+      ctx.globalAlpha = 1 - progress
+      ctx.beginPath(); ctx.arc(sx, sy, cell * 0.15, 0, Math.PI * 2); ctx.fill()
+    }
     ctx.globalAlpha = 1
   }
 

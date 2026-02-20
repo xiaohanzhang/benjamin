@@ -30,12 +30,14 @@ export interface Game {
   cannonX: number; score: number; hp: number
   nid: number; lastSpawn: number; alive: boolean
   hurtUntil: number; startedAt: number
+  level: number; levelUpUntil: number
 }
 
 /** Signals returned by tick() so the component knows which React setters to call. */
 export interface TickResult {
   scoreChanged: boolean
   hpChanged: boolean
+  levelChanged: boolean
   gameOver: boolean
   targetBar: Bar | null
 }

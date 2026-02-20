@@ -3,7 +3,8 @@
  */
 
 // -- Layout --
-export const GRID_W = 7
+export const START_GRID_W = 2
+export const MAX_GRID_W = 20
 export const GRID_H = 30
 
 // -- Gameplay --
@@ -14,6 +15,14 @@ export const BASE_SPAWN_MS = 4000
 export const MIN_SPAWN_MS = 1200
 export const SPAWN_DEC = 80
 export const SHOT_CD = 400
+export const POINTS_PER_LEVEL = 5
+export const LEVEL_UP_MS = 2000
+
+// -- Cannon sprites (evolve every 2 levels) --
+export const CANNON_FILES = [
+  'Frontier Popgun', 'Ember Bastion', 'Iron Twinshot', 'Arcane Array',
+  'Plasma Obelisk', 'Voidcore Siege', 'Solar Crown', 'Prism Sovereign',
+]
 
 // -- Visuals --
 // Colors for values 1-10

@@ -10,8 +10,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { GRID_W, GRID_H, INITIAL_HP, SHOT_CD, COLORS } from './constants'
-import { mkGame, tryShoot, tick } from './logic'
+import { GRID_H, INITIAL_HP, SHOT_CD, COLORS } from './constants'
+import { mkGame, tryShoot, tick, gridWidth } from './logic'
 import { renderFrame } from './renderer'
 import type { Bar } from './types'
 
@@ -29,6 +29,7 @@ export default function CannonGame() {
   const [phase, setPhase] = useState<'idle' | 'play' | 'over'>('idle')
   const [score, setScore] = useState(0)
   const [hp, setHp] = useState(INITIAL_HP)
+  const [level, setLevel] = useState(1)
   const [targetBar, setTargetBar] = useState<Bar | null>(null)
   const defaultBest = typeof window !== 'undefined' ? localStorage.getItem('cannon-best') : null
   const [best, setBest] = useState(defaultBest ? parseInt(defaultBest) : 0)
@@ -38,23 +39,22 @@ export default function CannonGame() {
   const resizeCanvas = useCallback(() => {
     const cvs = canvasRef.current
     if (!cvs) return
+    const gridW = gridWidth(gRef.current.level)
     const availH = window.innerHeight - 4
     // Try wider keypad first: keypadW = 10 * cell + padding
-    // cell * GRID_W + 10 * cell + padding + 12 <= windowW
-    // cell * (GRID_W + 10) <= windowW - padding - 12
     let cell = Math.floor(Math.min(
-      (window.innerWidth - KEYPAD_PAD - 12) / (GRID_W + 10),
+      (window.innerWidth - KEYPAD_PAD - 12) / (gridW + 10),
       availH / GRID_H,
     ))
     let kw = 10 * cell + KEYPAD_PAD
     if (kw < KEYPAD_W_MIN) {
       cell = Math.floor(Math.min(
-        (window.innerWidth - KEYPAD_W_MIN - 12) / GRID_W,
+        (window.innerWidth - KEYPAD_W_MIN - 12) / gridW,
         availH / GRID_H,
       ))
       kw = KEYPAD_W_MIN
     }
-    const w = cell * GRID_W
+    const w = cell * gridW
     const h = cell * GRID_H
     const dpr = window.devicePixelRatio || 1
     dprRef.current = dpr
@@ -99,6 +99,10 @@ export default function CannonGame() {
 
       if (result.hpChanged) setHp(g.hp)
       if (result.scoreChanged) setScore(g.score)
+      if (result.levelChanged) {
+        setLevel(g.level)
+        resizeCanvas()
+      }
       if (result.gameOver) {
         if (g.score > best) { setBest(g.score); localStorage.setItem('cannon-best', String(g.score)) }
         setPhase('over')
@@ -109,8 +113,9 @@ export default function CannonGame() {
         setTargetBar(result.targetBar)
       }
 
+      const gridW = gridWidth(g.level)
       const ctx = cvs.getContext('2d')!
-      renderFrame(ctx, g, t, cell, dprRef.current)
+      renderFrame(ctx, g, t, cell, dprRef.current, gridW)
 
       raf = requestAnimationFrame(loop)
     }
@@ -124,8 +129,9 @@ export default function CannonGame() {
     if (phase !== 'play') return
     const onKey = (e: KeyboardEvent) => {
       const g = gRef.current
+      const gw = gridWidth(g.level)
       if (e.key === 'ArrowLeft') { g.cannonX = Math.max(0, g.cannonX - 1); e.preventDefault() }
-      else if (e.key === 'ArrowRight') { g.cannonX = Math.min(GRID_W - 1, g.cannonX + 1); e.preventDefault() }
+      else if (e.key === 'ArrowRight') { g.cannonX = Math.min(gw - 1, g.cannonX + 1); e.preventDefault() }
       else {
         const n = parseInt(e.key)
         if (n >= 1 && n <= 9) { shoot(n); e.preventDefault() }
@@ -142,8 +148,9 @@ export default function CannonGame() {
     if (!cvs) return
     const rect = cvs.getBoundingClientRect()
     const cell = cellRef.current
+    const gw = gridWidth(gRef.current.level)
     const col = Math.floor((e.clientX - rect.left) / cell)
-    gRef.current.cannonX = Math.max(0, Math.min(GRID_W - 1, col))
+    gRef.current.cannonX = Math.max(0, Math.min(gw - 1, col))
   }, [phase])
 
   const startGame = useCallback(() => {
@@ -152,7 +159,7 @@ export default function CannonGame() {
     gRef.current = g
     lastShotRef.current = 0
     targetRef.current = null
-    setScore(0); setHp(INITIAL_HP); setTargetBar(null)
+    setScore(0); setHp(INITIAL_HP); setLevel(1); setTargetBar(null)
     setPhase('play')
   }, [])
 
@@ -225,7 +232,7 @@ export default function CannonGame() {
       />
 
       <div className="flex flex-col items-center gap-2 p-2 pt-3 shrink-0" style={{ width: keypadW }}>
-        <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">💥{score}</div>
+        <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">💥{score} Lv.{level}</div>
         <div className="flex flex-col items-center leading-none text-sm">
           {Array.from({ length: INITIAL_HP }, (_, i) => (
             <span key={i}>{i < hp ? '❤️' : '🖤'}</span>
@@ -274,8 +281,8 @@ export default function CannonGame() {
                     className="font-extrabold text-white"
                     style={{
                       transform: 'scaleX(-1)',
-                      fontSize: Math.max(cellSize * 0.4, 11),
-                      textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                      fontSize: Math.max(cellSize * 0.55, 14),
+                      textShadow: '0 1px 3px rgba(0,0,0,0.7)',
                     }}
                   >{n}</span>
                 </div>
@@ -308,10 +315,11 @@ export default function CannonGame() {
                   }}
                 >
                   <span
-                    className="text-sm font-extrabold text-white"
+                    className="font-extrabold text-white"
                     style={{
                       transform: 'scaleX(-1)',
-                      textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                      fontSize: 14,
+                      textShadow: '0 1px 3px rgba(0,0,0,0.7)',
                     }}
                   >{n}</span>
                 </div>
