@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/server/db'
-import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory, blocksHistory } from '@/server/db/schema'
+import { gameState as gameStateTable, wrongAnswers, roundHistory, questionHistory, blocksHistory, cannonHistory } from '@/server/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireUserId } from '@/server/auth-helpers'
 import type { GameState, DifficultyLevel, LeitnerBox, OperationType, QuestionRecord } from '@/types/game'
@@ -211,6 +211,76 @@ export async function saveBlocksResult(result: {
     duration: result.duration,
     timestamp: Date.now(),
   })
+}
+
+export async function saveCannonResult(result: {
+  score: number
+  level: number
+  duration: number
+}): Promise<void> {
+  const userId = await requireUserId()
+  await db.insert(cannonHistory).values({
+    userId,
+    score: result.score,
+    level: result.level,
+    duration: result.duration,
+    timestamp: Date.now(),
+  })
+}
+
+export interface CannonGameEntry {
+  score: number
+  level: number
+  duration: number
+  datetime: string
+}
+
+export interface CannonDailyStats {
+  date: string
+  gamesPlayed: number
+  avgScore: number
+  maxScore: number
+  minScore: number
+}
+
+export interface CannonDashboardData {
+  games: CannonGameEntry[]
+  dailyStats: CannonDailyStats[]
+}
+
+export async function getCannonDashboardData(): Promise<CannonDashboardData> {
+  const userId = await requireUserId()
+  const rows = await db.select().from(cannonHistory).where(eq(cannonHistory.userId, userId))
+
+  const games: CannonGameEntry[] = rows.map(r => ({
+    score: r.score,
+    level: r.level,
+    duration: r.duration,
+    datetime: new Date(r.timestamp).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    }),
+  }))
+
+  const byDate = new Map<string, { scores: number[]; count: number }>()
+  for (const r of rows) {
+    const date = new Date(r.timestamp).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric',
+    })
+    const entry = byDate.get(date) ?? { scores: [], count: 0 }
+    entry.scores.push(r.score)
+    entry.count++
+    byDate.set(date, entry)
+  }
+
+  const dailyStats: CannonDailyStats[] = Array.from(byDate.entries()).map(([date, stats]) => ({
+    date,
+    gamesPlayed: stats.count,
+    avgScore: Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.count),
+    maxScore: Math.max(...stats.scores),
+    minScore: Math.min(...stats.scores),
+  }))
+
+  return { games, dailyStats }
 }
 
 export async function saveQuestionRecords(round: number, records: QuestionRecord[]): Promise<void> {

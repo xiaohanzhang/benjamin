@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { GRID_H, INITIAL_HP, SHOT_CD, COLORS } from './constants'
+import { saveCannonResult } from '@/server/actions/game'
 import { mkGame, tryShoot, tick, gridWidth } from './logic'
 import { renderFrame } from './renderer'
 import type { Bar } from './types'
@@ -105,6 +106,8 @@ export default function CannonGame() {
       }
       if (result.gameOver) {
         if (g.score > best) { setBest(g.score); localStorage.setItem('cannon-best', String(g.score)) }
+        const duration = Math.round((Date.now() - g.startedAt) / 1000)
+        saveCannonResult({ score: g.score, level: g.level, duration })
         setPhase('over')
         return
       }
