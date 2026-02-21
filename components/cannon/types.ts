@@ -2,6 +2,10 @@
  * Type definitions for the Number Cannon game.
  */
 
+import type { BaseGame, BaseTickResult } from '@/lib/game/types'
+
+export type { Fx } from '@/lib/game/types'
+
 export interface Bar {
   id: number
   total: number     // sum value (4-10)
@@ -10,8 +14,6 @@ export interface Bar {
   x: number         // column
   y: number         // top edge in pixels
 }
-
-export interface Fx { id: number; text: string; x: number; y: number; t0: number; ok: boolean }
 
 export interface Shot {
   id: number
@@ -25,19 +27,12 @@ export interface Shot {
   exact: boolean    // whether num === bar.total
 }
 
-export interface Game {
-  bars: Bar[]; fx: Fx[]; shots: Shot[]
-  cannonX: number; score: number; hp: number
-  nid: number; lastSpawn: number; alive: boolean
-  hurtUntil: number; startedAt: number
-  level: number; levelUpUntil: number
+export interface Game extends BaseGame {
+  bars: Bar[]; shots: Shot[]
+  cannonX: number
 }
 
 /** Signals returned by tick() so the component knows which React setters to call. */
-export interface TickResult {
-  scoreChanged: boolean
-  hpChanged: boolean
-  levelChanged: boolean
-  gameOver: boolean
+export interface TickResult extends BaseTickResult {
   targetBar: Bar | null
 }

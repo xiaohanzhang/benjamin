@@ -32,10 +32,14 @@ export default function CannonGame() {
   const [hp, setHp] = useState(INITIAL_HP)
   const [level, setLevel] = useState(1)
   const [targetBar, setTargetBar] = useState<Bar | null>(null)
-  const defaultBest = typeof window !== 'undefined' ? localStorage.getItem('cannon-best') : null
-  const [best, setBest] = useState(defaultBest ? parseInt(defaultBest) : 0)
+  const [best, setBest] = useState(0)
   const [cellSize, setCellSize] = useState(20)
   const [keypadW, setKeypadW] = useState(KEYPAD_W_MIN)
+
+  useEffect(() => {
+    const stored = localStorage.getItem('cannon-best')
+    if (stored) setBest(parseInt(stored))
+  }, [])
 
   const resizeCanvas = useCallback(() => {
     const cvs = canvasRef.current

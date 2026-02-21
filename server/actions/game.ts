@@ -143,14 +143,16 @@ export async function getDashboardData(): Promise<DashboardData> {
   return { totalRounds: rows.length, overallAccuracy, dailyStats }
 }
 
-export interface BlocksGameEntry {
+// -- Shared game dashboard types & helpers --
+
+export interface GameEntry {
   score: number
   level: number
   duration: number
   datetime: string
 }
 
-export interface BlocksDailyStats {
+export interface DailyStats {
   date: string
   gamesPlayed: number
   avgScore: number
@@ -158,16 +160,33 @@ export interface BlocksDailyStats {
   minScore: number
 }
 
-export interface BlocksDashboardData {
-  games: BlocksGameEntry[]
-  dailyStats: BlocksDailyStats[]
+export interface GameDashboardData {
+  games: GameEntry[]
+  dailyStats: DailyStats[]
 }
 
-export async function getBlocksDashboardData(): Promise<BlocksDashboardData> {
-  const userId = await requireUserId()
-  const rows = await db.select().from(blocksHistory).where(eq(blocksHistory.userId, userId))
+type GameHistoryTable = typeof blocksHistory | typeof cannonHistory
 
-  const games: BlocksGameEntry[] = rows.map(r => ({
+async function saveGameResult(table: GameHistoryTable, result: {
+  score: number
+  level: number
+  duration: number
+}): Promise<void> {
+  const userId = await requireUserId()
+  await db.insert(table).values({
+    userId,
+    score: result.score,
+    level: result.level,
+    duration: result.duration,
+    timestamp: Date.now(),
+  })
+}
+
+async function getGameDashboardData(table: GameHistoryTable): Promise<GameDashboardData> {
+  const userId = await requireUserId()
+  const rows = await db.select().from(table).where(eq(table.userId, userId))
+
+  const games: GameEntry[] = rows.map(r => ({
     score: r.score,
     level: r.level,
     duration: r.duration,
@@ -187,7 +206,7 @@ export async function getBlocksDashboardData(): Promise<BlocksDashboardData> {
     byDate.set(date, entry)
   }
 
-  const dailyStats: BlocksDailyStats[] = Array.from(byDate.entries()).map(([date, stats]) => ({
+  const dailyStats: DailyStats[] = Array.from(byDate.entries()).map(([date, stats]) => ({
     date,
     gamesPlayed: stats.count,
     avgScore: Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.count),
@@ -198,89 +217,17 @@ export async function getBlocksDashboardData(): Promise<BlocksDashboardData> {
   return { games, dailyStats }
 }
 
-export async function saveBlocksResult(result: {
-  score: number
-  level: number
-  duration: number
-}): Promise<void> {
-  const userId = await requireUserId()
-  await db.insert(blocksHistory).values({
-    userId,
-    score: result.score,
-    level: result.level,
-    duration: result.duration,
-    timestamp: Date.now(),
-  })
+export async function saveBlocksResult(r: { score: number; level: number; duration: number }) {
+  return saveGameResult(blocksHistory, r)
 }
-
-export async function saveCannonResult(result: {
-  score: number
-  level: number
-  duration: number
-}): Promise<void> {
-  const userId = await requireUserId()
-  await db.insert(cannonHistory).values({
-    userId,
-    score: result.score,
-    level: result.level,
-    duration: result.duration,
-    timestamp: Date.now(),
-  })
+export async function saveCannonResult(r: { score: number; level: number; duration: number }) {
+  return saveGameResult(cannonHistory, r)
 }
-
-export interface CannonGameEntry {
-  score: number
-  level: number
-  duration: number
-  datetime: string
+export async function getBlocksDashboardData() {
+  return getGameDashboardData(blocksHistory)
 }
-
-export interface CannonDailyStats {
-  date: string
-  gamesPlayed: number
-  avgScore: number
-  maxScore: number
-  minScore: number
-}
-
-export interface CannonDashboardData {
-  games: CannonGameEntry[]
-  dailyStats: CannonDailyStats[]
-}
-
-export async function getCannonDashboardData(): Promise<CannonDashboardData> {
-  const userId = await requireUserId()
-  const rows = await db.select().from(cannonHistory).where(eq(cannonHistory.userId, userId))
-
-  const games: CannonGameEntry[] = rows.map(r => ({
-    score: r.score,
-    level: r.level,
-    duration: r.duration,
-    datetime: new Date(r.timestamp).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    }),
-  }))
-
-  const byDate = new Map<string, { scores: number[]; count: number }>()
-  for (const r of rows) {
-    const date = new Date(r.timestamp).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric',
-    })
-    const entry = byDate.get(date) ?? { scores: [], count: 0 }
-    entry.scores.push(r.score)
-    entry.count++
-    byDate.set(date, entry)
-  }
-
-  const dailyStats: CannonDailyStats[] = Array.from(byDate.entries()).map(([date, stats]) => ({
-    date,
-    gamesPlayed: stats.count,
-    avgScore: Math.round(stats.scores.reduce((a, b) => a + b, 0) / stats.count),
-    maxScore: Math.max(...stats.scores),
-    minScore: Math.min(...stats.scores),
-  }))
-
-  return { games, dailyStats }
+export async function getCannonDashboardData() {
+  return getGameDashboardData(cannonHistory)
 }
 
 export async function saveQuestionRecords(round: number, records: QuestionRecord[]): Promise<void> {

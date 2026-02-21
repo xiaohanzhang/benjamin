@@ -33,12 +33,16 @@ export default function BlocksGame() {
   const [score, setScore] = useState(0)
   const [hp, setHp] = useState(INITIAL_HP)
   const [targetW, setTargetW] = useState<number | null>(null)
-  const defaultBest = typeof window !== 'undefined' ? localStorage.getItem('blocks-best') : null
-  const [best, setBest] = useState(defaultBest ? parseInt(defaultBest) : 0)
+  const [best, setBest] = useState(0)
   const [level, setLevel] = useState(1)
   const [buildingLevel, setBuildingLevel] = useState(0)
   const [cellSize, setCellSize] = useState(20)
   const [keypadW, setKeypadW] = useState(KEYPAD_W_MIN)
+
+  useEffect(() => {
+    const stored = localStorage.getItem('blocks-best')
+    if (stored) setBest(parseInt(stored))
+  }, [])
 
   const resizeCanvas = useCallback(() => {
     const cvs = canvasRef.current
