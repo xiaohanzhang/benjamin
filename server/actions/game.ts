@@ -230,6 +230,40 @@ export async function getCannonDashboardData() {
   return getGameDashboardData(cannonHistory)
 }
 
+export interface DailyActivity {
+  date: string
+  math: number
+  blocks: number
+  cannon: number
+  total: number
+}
+
+export async function getAllDailyActivity(): Promise<DailyActivity[]> {
+  const userId = await requireUserId()
+  const [mathRows, blocksRows, cannonRows] = await Promise.all([
+    db.select().from(roundHistory).where(eq(roundHistory.userId, userId)),
+    db.select().from(blocksHistory).where(eq(blocksHistory.userId, userId)),
+    db.select().from(cannonHistory).where(eq(cannonHistory.userId, userId)),
+  ])
+
+  const fmt = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const byDate = new Map<string, { math: number; blocks: number; cannon: number }>()
+
+  const ensure = (date: string) => {
+    if (!byDate.has(date)) byDate.set(date, { math: 0, blocks: 0, cannon: 0 })
+    return byDate.get(date)!
+  }
+
+  for (const r of mathRows) ensure(fmt(r.timestamp)).math++
+  for (const r of blocksRows) ensure(fmt(r.timestamp)).blocks++
+  for (const r of cannonRows) ensure(fmt(r.timestamp)).cannon++
+
+  return Array.from(byDate.entries()).map(([date, s]) => ({
+    date, math: s.math, blocks: s.blocks, cannon: s.cannon,
+    total: s.math + s.blocks + s.cannon,
+  }))
+}
+
 export async function saveQuestionRecords(round: number, records: QuestionRecord[]): Promise<void> {
   const userId = await requireUserId()
   const now = Date.now()

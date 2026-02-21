@@ -27,6 +27,35 @@ interface Props {
   colors: Colors
 }
 
+/** SVG CSS for instant hover tooltips (no JS). */
+const tooltipCSS = `
+  .tt { cursor: pointer; }
+  .tt .tip { opacity: 0; pointer-events: none; transition: opacity .1s; }
+  .tt:hover .tip { opacity: 1; }
+  .tt:hover .ring { opacity: 0.3; }
+`
+
+/** Visible dot circle (rendered in middle layer). */
+function Dot({ cx, cy, r, fill }: { cx: number; cy: number; r: string; fill: string }) {
+  return <circle cx={cx} cy={cy} r={r} fill={fill} />
+}
+
+/** Invisible hover target + tooltip popup (rendered in top layer). */
+function Tip({ cx, cy, fill, label }: { cx: number; cy: number; fill: string; label: string }) {
+  const above = cy > 40
+  const ty = above ? cy - 8 : cy + 14
+  return (
+    <g className="tt">
+      <circle cx={cx} cy={cy} r="8" fill="transparent" />
+      <circle className="ring" cx={cx} cy={cy} r="6" fill={fill} opacity="0" />
+      <g className="tip">
+        <rect x={cx - 28} y={ty - 8} width="56" height="14" rx="3" fill="rgba(0,0,0,0.8)" />
+        <text x={cx} y={ty} fontSize="8" fill="#fff" textAnchor="middle" dominantBaseline="middle">{label}</text>
+      </g>
+    </g>
+  )
+}
+
 export default function GameDashboardSection({ title, emoji, data, colors }: Props) {
   const { games, dailyStats } = data
   if (games.length === 0) return null
@@ -114,6 +143,7 @@ function GameHistoryChart({ games, scoreColor }: { games: GameDashboardData['gam
   return (
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H + 30}`} className="w-full" style={{ minWidth: '300px' }}>
+        <style>{tooltipCSS}</style>
         {/* Y axis labels — score (left) */}
         <text x={4} y={PY + 3} fontSize="9" fill={scoreColor} fontWeight="bold">{sMax}</text>
         <text x={4} y={H - PY + 3} fontSize="9" fill={scoreColor} fontWeight="bold">{sMin}</text>
@@ -124,16 +154,19 @@ function GameHistoryChart({ games, scoreColor }: { games: GameDashboardData['gam
         <line x1={PX} y1={PY} x2={W - PX} y2={PY} stroke="#e5e7eb" strokeWidth="0.5" />
         <line x1={PX} y1={H - PY} x2={W - PX} y2={H - PY} stroke="#e5e7eb" strokeWidth="0.5" />
         <line x1={PX} y1={H / 2} x2={W - PX} y2={H / 2} stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="4" />
-        {/* Score line */}
+        {/* Layer 1: lines */}
         <path d={scoreLine} fill="none" stroke={scoreColor} strokeWidth="2" strokeLinejoin="round" />
-        {games.map((p, i) => <circle key={`s${i}`} cx={x(i)} cy={yS(p.score)} r="3" fill={scoreColor} />)}
-        {/* Duration line */}
         <path d={durLine} fill="none" stroke={blue} strokeWidth="2" strokeLinejoin="round" strokeDasharray="6 3" />
-        {games.map((p, i) => <circle key={`d${i}`} cx={x(i)} cy={yD(p.duration)} r="3" fill={blue} />)}
         {/* X labels */}
         {games.map((p, i) => i % labelStep === 0 || i === n - 1 ? (
           <text key={`x${i}`} x={x(i)} y={H + 12} fontSize="8" fill="#9ca3af" textAnchor="middle">{p.datetime}</text>
         ) : null)}
+        {/* Layer 2: visible dots */}
+        {games.map((p, i) => <Dot key={`s${i}`} cx={x(i)} cy={yS(p.score)} r="3" fill={scoreColor} />)}
+        {games.map((p, i) => <Dot key={`d${i}`} cx={x(i)} cy={yD(p.duration)} r="3" fill={blue} />)}
+        {/* Layer 3: tooltip hover targets (always on top) */}
+        {games.map((p, i) => <Tip key={`ts${i}`} cx={x(i)} cy={yS(p.score)} fill={scoreColor} label={`Score: ${p.score}`} />)}
+        {games.map((p, i) => <Tip key={`td${i}`} cx={x(i)} cy={yD(p.duration)} fill={blue} label={`${p.duration}s`} />)}
       </svg>
     </div>
   )
@@ -166,6 +199,7 @@ function DailyStatsChart({ dailyStats, maxColor, avgColor, areaColor }: {
   return (
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H + 30}`} className="w-full" style={{ minWidth: '300px' }}>
+        <style>{tooltipCSS}</style>
         {/* Y axis labels — score (left) */}
         <text x={4} y={PY + 3} fontSize="9" fill={avgColor} fontWeight="bold">{scMax}</text>
         <text x={4} y={H - PY + 3} fontSize="9" fill={avgColor} fontWeight="bold">{scMin}</text>
@@ -176,20 +210,12 @@ function DailyStatsChart({ dailyStats, maxColor, avgColor, areaColor }: {
         <line x1={PX} y1={PY} x2={W - PX} y2={PY} stroke="#e5e7eb" strokeWidth="0.5" />
         <line x1={PX} y1={H - PY} x2={W - PX} y2={H - PY} stroke="#e5e7eb" strokeWidth="0.5" />
         <line x1={PX} y1={H / 2} x2={W - PX} y2={H / 2} stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="4" />
-        {/* Max-min shaded area */}
+        {/* Layer 1: lines */}
         <path d={area} fill={areaColor} opacity="0.3" />
-        {/* Max line */}
         <path d={maxLine} fill="none" stroke={maxColor} strokeWidth="2" strokeLinejoin="round" />
-        {d.map((v, i) => <circle key={`mx${i}`} cx={x(i)} cy={yS(v.maxScore)} r="3" fill={maxColor} />)}
-        {/* Avg line */}
         <path d={avgLine} fill="none" stroke={avgColor} strokeWidth="2.5" strokeLinejoin="round" />
-        {d.map((v, i) => <circle key={`av${i}`} cx={x(i)} cy={yS(v.avgScore)} r="3.5" fill={avgColor} />)}
-        {/* Min line */}
         <path d={minLine} fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="4 2" />
-        {d.map((v, i) => <circle key={`mn${i}`} cx={x(i)} cy={yS(v.minScore)} r="2.5" fill="#9ca3af" />)}
-        {/* Games played line */}
         <path d={gamesLine} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="6 3" />
-        {d.map((v, i) => <circle key={`gp${i}`} cx={x(i)} cy={yG(v.gamesPlayed)} r="2.5" fill="#10b981" />)}
         {/* X labels */}
         {d.map((v, i) => (
           <text key={`x${i}`} x={x(i)} y={H + 12} fontSize="9" fill="#6b7280" textAnchor="middle" fontWeight="600">{v.date}</text>
@@ -197,6 +223,16 @@ function DailyStatsChart({ dailyStats, maxColor, avgColor, areaColor }: {
         {d.map((v, i) => (
           <text key={`xg${i}`} x={x(i)} y={H + 24} fontSize="8" fill="#9ca3af" textAnchor="middle">{v.gamesPlayed}g</text>
         ))}
+        {/* Layer 2: visible dots */}
+        {d.map((v, i) => <Dot key={`mx${i}`} cx={x(i)} cy={yS(v.maxScore)} r="3" fill={maxColor} />)}
+        {d.map((v, i) => <Dot key={`av${i}`} cx={x(i)} cy={yS(v.avgScore)} r="3.5" fill={avgColor} />)}
+        {d.map((v, i) => <Dot key={`mn${i}`} cx={x(i)} cy={yS(v.minScore)} r="2.5" fill="#9ca3af" />)}
+        {d.map((v, i) => <Dot key={`gp${i}`} cx={x(i)} cy={yG(v.gamesPlayed)} r="2.5" fill="#10b981" />)}
+        {/* Layer 3: tooltip hover targets (always on top) */}
+        {d.map((v, i) => <Tip key={`tmx${i}`} cx={x(i)} cy={yS(v.maxScore)} fill={maxColor} label={`Max: ${v.maxScore}`} />)}
+        {d.map((v, i) => <Tip key={`tav${i}`} cx={x(i)} cy={yS(v.avgScore)} fill={avgColor} label={`Avg: ${v.avgScore}`} />)}
+        {d.map((v, i) => <Tip key={`tmn${i}`} cx={x(i)} cy={yS(v.minScore)} fill="#9ca3af" label={`Min: ${v.minScore}`} />)}
+        {d.map((v, i) => <Tip key={`tgp${i}`} cx={x(i)} cy={yG(v.gamesPlayed)} fill="#10b981" label={`Games: ${v.gamesPlayed}`} />)}
       </svg>
     </div>
   )
