@@ -58,7 +58,7 @@ export const verificationTokens = sqliteTable(
   ]
 );
  
-// Game tables — scoped by userId
+// Math game local state (difficulty/round) — kept for reference, no longer written by app
 export const gameState = sqliteTable('game_state', {
   userId: text('user_id')
     .primaryKey()
@@ -67,55 +67,20 @@ export const gameState = sqliteTable('game_state', {
   currentRound: integer('current_round').notNull().default(0),
 })
 
-export const wrongAnswers = sqliteTable('wrong_answers', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  questionKey: text('question_key').notNull(),
-  operand1: integer('operand1').notNull(),
-  operand2: integer('operand2').notNull(),
-  operation: text('operation').notNull(),
-  correctAnswer: integer('correct_answer').notNull(),
-  difficulty: integer('difficulty').notNull(),
-  box: integer('box').notNull().default(1),
-  lastReviewedRound: integer('last_reviewed_round').notNull().default(0),
-})
+// Game history tables — scoped by userId, shared schema
+function createGameHistoryTable(name: string) {
+  return sqliteTable(name, {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    score: integer('score').notNull(),
+    level: integer('level').notNull(),
+    duration: integer('duration').notNull(), // seconds
+    timestamp: integer('timestamp').notNull(),
+  })
+}
 
-export const roundHistory = sqliteTable('round_history', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  round: integer('round').notNull(),
-  correct: integer('correct').notNull(),
-  total: integer('total').notNull(),
-  difficulty: integer('difficulty').notNull(),
-  timestamp: integer('timestamp').notNull(),
-})
-
-export const blocksHistory = sqliteTable('blocks_history', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  score: integer('score').notNull(),
-  level: integer('level').notNull(),
-  duration: integer('duration').notNull(), // seconds
-  timestamp: integer('timestamp').notNull(),
-})
-
-export const questionHistory = sqliteTable('question_history', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  round: integer('round').notNull(),
-  operand1: integer('operand1').notNull(),
-  operand2: integer('operand2').notNull(),
-  operation: text('operation').notNull(),
-  correctAnswer: integer('correct_answer').notNull(),
-  userAnswer: integer('user_answer').notNull(),
-  isCorrect: integer('is_correct').notNull(),
-  timestamp: integer('timestamp').notNull(),
-})
+export const mathHistory = createGameHistoryTable('math_history')
+export const blocksHistory = createGameHistoryTable('blocks_history')
+export const cannonHistory = createGameHistoryTable('cannon_history')

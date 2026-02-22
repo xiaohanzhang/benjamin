@@ -36,6 +36,13 @@ export default async function Home() {
           href="/blocks"
           gradient="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500"
         />
+        <GameCard
+          title="Number Cannon"
+          description="Add the bars and fire the sum!"
+          emoji="💥"
+          href="/cannon"
+          gradient="bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-500"
+        />
       </div>
     </div>
   )

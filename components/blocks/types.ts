@@ -2,9 +2,11 @@
  * Type definitions for the Making 10 game.
  */
 
-export interface Plank { id: number; len: number; x: number; y: number }
+import type { Fx, BaseGame, BaseTickResult } from '@/lib/game/types'
 
-export interface Fx { id: number; text: string; x: number; y: number; t0: number; ok: boolean }
+export type { Fx } from '@/lib/game/types'
+
+export interface Plank { id: number; len: number; x: number; y: number }
 
 export interface ShotAnim {
   id: number
@@ -16,23 +18,15 @@ export interface ShotAnim {
   hit: boolean
 }
 
-export interface Game {
-  planks: Plank[]; fx: Fx[]; shots: ShotAnim[]
+export interface Game extends BaseGame {
+  planks: Plank[]; shots: ShotAnim[]
   stack: string[]
-  charX: number; score: number; hp: number
-  nid: number; lastSpawn: number; alive: boolean
-  hurtUntil: number
-  level: number; levelUpUntil: number
+  charX: number
   buildingLevel: number; buildingUntil: number
-  startedAt: number
 }
 
 /** Signals returned by tick() so the component knows which React setters to call. */
-export interface TickResult {
-  scoreChanged: boolean
-  hpChanged: boolean
-  levelChanged: boolean
+export interface TickResult extends BaseTickResult {
   buildingChanged: boolean
-  gameOver: boolean
   targetW: number | null
 }

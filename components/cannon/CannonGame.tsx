@@ -1,5 +1,5 @@
 /**
- * BlocksGame — "Making 10" math game (React component)
+ * CannonGame — "Number Cannon" addition game (React component)
  *
  * Thin React shell: state management, event handlers, and game loop
  * that delegates to tick() for logic and renderFrame() for drawing.
@@ -10,63 +10,56 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { saveBlocksResult } from '@/server/actions/game'
-import {
-  MAX_GRID_W, GRID_H, INITIAL_HP, SHOT_CD,
-  BUILDING_NAMES, COLORS,
-} from './constants'
-import { activeStart, gridWidth, stackCells, mkGame, tryShoot, tick } from './logic'
+import { GRID_H, INITIAL_HP, SHOT_CD, COLORS } from './constants'
+import { saveCannonResult } from '@/server/actions/game'
+import { mkGame, tryShoot, tick, gridWidth } from './logic'
 import { renderFrame } from './renderer'
+import type { Bar } from './types'
 
 const KEYPAD_W_MIN = 72
-const KEYPAD_PAD = 16 // horizontal padding around keypad buttons
+const KEYPAD_PAD = 16
 
-export default function BlocksGame() {
+export default function CannonGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gRef = useRef(mkGame())
   const cellRef = useRef(20)
   const dprRef = useRef(1)
   const lastShotRef = useRef(0)
-  const targetRef = useRef<number | null>(null)
+  const targetRef = useRef<Bar | null>(null)
 
   const [phase, setPhase] = useState<'idle' | 'play' | 'over'>('idle')
   const [score, setScore] = useState(0)
   const [hp, setHp] = useState(INITIAL_HP)
-  const [targetW, setTargetW] = useState<number | null>(null)
-  const [best, setBest] = useState(0)
   const [level, setLevel] = useState(1)
-  const [buildingLevel, setBuildingLevel] = useState(0)
+  const [targetBar, setTargetBar] = useState<Bar | null>(null)
+  const [best, setBest] = useState(0)
   const [cellSize, setCellSize] = useState(20)
   const [keypadW, setKeypadW] = useState(KEYPAD_W_MIN)
 
   useEffect(() => {
-    const stored = localStorage.getItem('blocks-best')
+    const stored = localStorage.getItem('cannon-best')
     if (stored) setBest(parseInt(stored))
   }, [])
 
   const resizeCanvas = useCallback(() => {
     const cvs = canvasRef.current
     if (!cvs) return
-    const sc = stackCells(gRef.current.buildingLevel)
+    const gridW = gridWidth(gRef.current.level)
     const availH = window.innerHeight - 4
-    const totalCols = sc + MAX_GRID_W
-    // Try wider keypad first: keypadW = 8 * cell + padding
-    // cell * totalCols + 8 * cell + padding + 12 <= windowW
-    // cell * (totalCols + 8) <= windowW - padding - 12
+    // Try wider keypad first: keypadW = 10 * cell + padding
     let cell = Math.floor(Math.min(
-      (window.innerWidth - KEYPAD_PAD - 12) / (totalCols + 8),
+      (window.innerWidth - KEYPAD_PAD - 12) / (gridW + 10),
       availH / GRID_H,
     ))
-    let kw = 8 * cell + KEYPAD_PAD
+    let kw = 10 * cell + KEYPAD_PAD
     if (kw < KEYPAD_W_MIN) {
-      // Screen too narrow for wide buttons, fall back to compact keypad
       cell = Math.floor(Math.min(
-        (window.innerWidth - KEYPAD_W_MIN - 12) / totalCols,
+        (window.innerWidth - KEYPAD_W_MIN - 12) / gridW,
         availH / GRID_H,
       ))
       kw = KEYPAD_W_MIN
     }
-    const w = cell * totalCols
+    const w = cell * gridW
     const h = cell * GRID_H
     const dpr = window.devicePixelRatio || 1
     dprRef.current = dpr
@@ -109,29 +102,27 @@ export default function BlocksGame() {
       const cell = cellRef.current
       const result = tick(g, dt, t, cell)
 
-      // Sync React state from TickResult
       if (result.hpChanged) setHp(g.hp)
       if (result.scoreChanged) setScore(g.score)
-      if (result.levelChanged) setLevel(g.level)
-      if (result.buildingChanged) {
-        setBuildingLevel(g.buildingLevel)
+      if (result.levelChanged) {
+        setLevel(g.level)
         resizeCanvas()
       }
       if (result.gameOver) {
-        if (g.score > best) { setBest(g.score); localStorage.setItem('blocks-best', String(g.score)) }
+        if (g.score > best) { setBest(g.score); localStorage.setItem('cannon-best', String(g.score)) }
         const duration = Math.round((Date.now() - g.startedAt) / 1000)
-        saveBlocksResult({ score: g.score, level: g.level, duration })
+        saveCannonResult({ score: g.score, level: g.level, duration })
         setPhase('over')
         return
       }
-      if (result.targetW !== targetRef.current) {
-        targetRef.current = result.targetW
-        setTargetW(result.targetW)
+      if (result.targetBar !== targetRef.current) {
+        targetRef.current = result.targetBar
+        setTargetBar(result.targetBar)
       }
 
-      // Render
+      const gridW = gridWidth(g.level)
       const ctx = cvs.getContext('2d')!
-      renderFrame(ctx, g, t, cell, dprRef.current)
+      renderFrame(ctx, g, t, cell, dprRef.current, gridW)
 
       raf = requestAnimationFrame(loop)
     }
@@ -146,10 +137,13 @@ export default function BlocksGame() {
     const onKey = (e: KeyboardEvent) => {
       const g = gRef.current
       const gw = gridWidth(g.level)
-      const as = activeStart(g.level)
-      if (e.key === 'ArrowLeft') { g.charX = Math.max(as, g.charX - 1); e.preventDefault() }
-      else if (e.key === 'ArrowRight') { g.charX = Math.min(as + gw - 1, g.charX + 1); e.preventDefault() }
-      else if (e.key >= '2' && e.key <= '8') { shoot(parseInt(e.key)); e.preventDefault() }
+      if (e.key === 'ArrowLeft') { g.cannonX = Math.max(0, g.cannonX - 1); e.preventDefault() }
+      else if (e.key === 'ArrowRight') { g.cannonX = Math.min(gw - 1, g.cannonX + 1); e.preventDefault() }
+      else {
+        const n = parseInt(e.key)
+        if (n >= 1 && n <= 9) { shoot(n); e.preventDefault() }
+        if (e.key === '0') { shoot(10); e.preventDefault() }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -161,12 +155,9 @@ export default function BlocksGame() {
     if (!cvs) return
     const rect = cvs.getBoundingClientRect()
     const cell = cellRef.current
-    const g = gRef.current
-    const gridOffX = stackCells(g.buildingLevel) * cell
-    const gw = gridWidth(g.level)
-    const as = activeStart(g.level)
-    const col = Math.floor((e.clientX - rect.left - gridOffX) / cell)
-    g.charX = Math.max(as, Math.min(as + gw - 1, col))
+    const gw = gridWidth(gRef.current.level)
+    const col = Math.floor((e.clientX - rect.left) / cell)
+    gRef.current.cannonX = Math.max(0, Math.min(gw - 1, col))
   }, [phase])
 
   const startGame = useCallback(() => {
@@ -175,21 +166,21 @@ export default function BlocksGame() {
     gRef.current = g
     lastShotRef.current = 0
     targetRef.current = null
-    setScore(0); setHp(INITIAL_HP); setTargetW(null); setLevel(1); setBuildingLevel(0)
+    setScore(0); setHp(INITIAL_HP); setLevel(1); setTargetBar(null)
     setPhase('play')
   }, [])
 
-  // ── Idle screen ──
+  // -- Idle screen --
   if (phase === 'idle') {
     return (
       <div className="flex flex-col flex-1 items-center justify-center gap-8 p-6">
         <div className="text-center">
-          <h1 className="text-4xl sm:text-5xl font-extrabold mb-2 bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 bg-clip-text text-transparent">
-            Making 10!
+          <h1 className="text-4xl sm:text-5xl font-extrabold mb-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 bg-clip-text text-transparent">
+            Number Cannon!
           </h1>
-          <p className="text-6xl my-4">🪵</p>
+          <p className="text-6xl my-4">💥</p>
           <p className="text-lg text-gray-500 max-w-xs mx-auto">
-            Shoot planks to make 10! Move under a falling plank and pick the right number.
+            Add the colored sections and fire the sum! Hit the right number to score.
           </p>
           {best > 0 && <p className="text-gray-400 mt-2">Best: {best}</p>}
         </div>
@@ -201,13 +192,13 @@ export default function BlocksGame() {
             active:scale-95 transition-all duration-200
             cursor-pointer select-none"
         >
-          Play! 🚀
+          Play!
         </button>
       </div>
     )
   }
 
-  // ── Game over screen ──
+  // -- Game over screen --
   if (phase === 'over') {
     const isNewBest = score > 0 && score >= best
     return (
@@ -215,11 +206,11 @@ export default function BlocksGame() {
         <Link href="/" className="absolute top-4 left-4 text-2xl">🏠</Link>
         <h2 className="text-4xl font-extrabold">Game Over!</h2>
         <div className="bg-white/80 rounded-3xl p-8 shadow-xl text-center space-y-3 max-w-sm w-full">
-          <div className="text-6xl font-extrabold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+          <div className="text-6xl font-extrabold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
             {score}
           </div>
-          <div className="text-xl text-gray-600">planks cleared</div>
-          {isNewBest && <div className="text-lg font-bold text-purple-600">New best! 🎉</div>}
+          <div className="text-xl text-gray-600">bars cleared</div>
+          {isNewBest && <div className="text-lg font-bold text-purple-600">New best!</div>}
           {!isNewBest && best > 0 && <div className="text-sm text-gray-400">Best: {best}</div>}
         </div>
         <button
@@ -230,13 +221,13 @@ export default function BlocksGame() {
             active:scale-95 transition-all duration-200
             cursor-pointer select-none"
         >
-          Play Again! 🔄
+          Play Again!
         </button>
       </div>
     )
   }
 
-  // ── Playing screen ──
+  // -- Playing screen --
   return (
     <div className="fixed inset-0 flex flex-row items-start justify-center select-none overflow-hidden"
          style={{ background: '#D4F1F9' }}>
@@ -248,57 +239,100 @@ export default function BlocksGame() {
       />
 
       <div className="flex flex-col items-center gap-2 p-2 pt-3 shrink-0" style={{ width: keypadW }}>
-        <div className="text-xs font-bold text-purple-500 whitespace-nowrap">Lv.{level}</div>
-        <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">🪵{score}</div>
-        {buildingLevel > 0 && (
-          <div className="text-xs font-bold text-amber-700 whitespace-nowrap">🏠{BUILDING_NAMES[buildingLevel - 1]}</div>
-        )}
+        <div className="text-sm font-extrabold text-orange-500 whitespace-nowrap">💥{score} Lv.{level}</div>
         <div className="flex flex-col items-center leading-none text-sm">
           {Array.from({ length: INITIAL_HP }, (_, i) => (
             <span key={i}>{i < hp ? '❤️' : '🖤'}</span>
           ))}
         </div>
         <div className="h-5 flex items-center">
-          {targetW !== null && (
+          {targetBar !== null && (
             <span className="text-xs font-bold text-gray-600 whitespace-nowrap">
-              {targetW}+?=10
+              {targetBar.partA > 0 ? `${targetBar.partA}+${targetBar.partB}=?` : `${targetBar.total}=?`}
             </span>
           )}
         </div>
         {keypadW > KEYPAD_W_MIN ? (
-          // Wide keypad: buttons sized proportionally with grid cells
-          [2, 3, 4, 5, 6, 7, 8].map(n => (
-            <button
-              key={n}
-              onClick={() => shoot(n)}
-              className="rounded-lg font-extrabold text-white
-                shadow-md active:scale-95 transition-all duration-150
-                cursor-pointer select-none relative overflow-hidden"
-              style={{
-                backgroundColor: COLORS[n],
-                width: n * cellSize,
-                height: cellSize,
-                fontSize: Math.max(cellSize * 0.45, 12),
-                backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent ${cellSize - 1}px, rgba(255,255,255,0.35) ${cellSize - 1}px, rgba(255,255,255,0.35) ${cellSize}px)`,
-              }}
-            >
-              {n}
-            </button>
-          ))
+          // Wide keypad: shell-shaped, color-tinted, facing left, with grid cells
+          Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
+            const h = cellSize * 0.8
+            return (
+              <button
+                key={n}
+                onClick={() => shoot(n)}
+                className="active:scale-95 transition-all duration-150
+                  cursor-pointer select-none"
+                style={{ width: n * cellSize, height: h }}
+              >
+                <div
+                  className="w-full h-full flex items-center justify-center"
+                  style={{
+                    backgroundColor: COLORS[n],
+                    backgroundImage: `
+                      repeating-linear-gradient(90deg,
+                        transparent, transparent ${cellSize - 1}px,
+                        rgba(255,255,255,0.35) ${cellSize - 1}px,
+                        rgba(255,255,255,0.35) ${cellSize}px),
+                      url(/cannon/shell.png)`,
+                    backgroundSize: '100% 100%',
+                    backgroundBlendMode: 'normal, luminosity',
+                    imageRendering: 'pixelated',
+                    transform: 'scaleX(-1)',
+                    WebkitMaskImage: 'url(/cannon/shell.png)',
+                    WebkitMaskSize: '100% 100%',
+                    maskImage: 'url(/cannon/shell.png)',
+                    maskSize: '100% 100%',
+                  }}
+                >
+                  <span
+                    className="font-extrabold text-white"
+                    style={{
+                      transform: 'scaleX(-1)',
+                      fontSize: Math.max(cellSize * 0.55, 14),
+                      textShadow: '0 1px 3px rgba(0,0,0,0.7)',
+                    }}
+                  >{n}</span>
+                </div>
+              </button>
+            )
+          })
         ) : (
-          // Compact keypad fallback
-          [2, 3, 4, 5, 6, 7, 8].map(n => (
-            <button
-              key={n}
-              onClick={() => shoot(n)}
-              className="rounded-xl w-14 h-12 text-xl font-extrabold text-white
-                shadow-md active:scale-90 transition-all duration-150
-                cursor-pointer select-none"
-              style={{ backgroundColor: COLORS[n] }}
-            >
-              {n}
-            </button>
-          ))
+          // Compact keypad: shell-shaped, color-tinted, facing left
+          <div className="grid grid-cols-2 gap-1">
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+              <button
+                key={n}
+                onClick={() => shoot(n)}
+                className="w-10 h-7 active:scale-90 transition-all duration-150
+                  cursor-pointer select-none"
+              >
+                <div
+                  className="w-full h-full flex items-center justify-center"
+                  style={{
+                    backgroundColor: COLORS[n],
+                    backgroundImage: 'url(/cannon/shell.png)',
+                    backgroundSize: '100% 100%',
+                    backgroundBlendMode: 'luminosity',
+                    imageRendering: 'pixelated',
+                    transform: 'scaleX(-1)',
+                    WebkitMaskImage: 'url(/cannon/shell.png)',
+                    WebkitMaskSize: '100% 100%',
+                    maskImage: 'url(/cannon/shell.png)',
+                    maskSize: '100% 100%',
+                  }}
+                >
+                  <span
+                    className="font-extrabold text-white"
+                    style={{
+                      transform: 'scaleX(-1)',
+                      fontSize: 14,
+                      textShadow: '0 1px 3px rgba(0,0,0,0.7)',
+                    }}
+                  >{n}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>
