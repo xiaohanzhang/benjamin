@@ -25,19 +25,10 @@ export interface WrongAnswerRecord {
   lastReviewedRound: number
 }
 
-export interface RoundResult {
-  round: number
-  correct: number
-  total: number
-  difficulty: DifficultyLevel
-  timestamp: number
-}
-
 export interface GameState {
   currentDifficulty: DifficultyLevel
   currentRound: number
   wrongAnswers: WrongAnswerRecord[]
-  roundHistory: RoundResult[]
 }
 
 export const QUESTIONS_PER_ROUND = 10

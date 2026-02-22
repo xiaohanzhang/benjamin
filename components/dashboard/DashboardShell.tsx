@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { DashboardData, GameDashboardData, DailyActivity } from '@/server/actions/game'
+import type { GameDashboardData, DailyActivity } from '@/server/actions/game'
 import GameDashboardSection from './GameDashboardSection'
 import AllSection from './AllSection'
 
 interface Props {
-  mathData: DashboardData
+  mathData: GameDashboardData
   blocksData: GameDashboardData
   cannonData: GameDashboardData
   dailyActivity: DailyActivity[]
@@ -20,10 +20,21 @@ const TABS = [
   { id: 'cannon', label: 'Cannon', emoji: '💥' },
 ] as const
 
+function EmptyTab({ href, label }: { href: string; label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <p className="text-gray-400 mb-4">No games played yet.</p>
+      <Link href={href} className="rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-white font-bold shadow-lg hover:scale-105 transition-transform">
+        {label}
+      </Link>
+    </div>
+  )
+}
+
 export default function DashboardShell({ mathData, blocksData, cannonData, dailyActivity }: Props) {
   const [active, setActive] = useState('all')
 
-  const hasAny = mathData.totalRounds > 0 || blocksData.games.length > 0 || cannonData.games.length > 0
+  const hasAny = mathData.games.length > 0 || blocksData.games.length > 0 || cannonData.games.length > 0
 
   if (!hasAny) {
     return (
@@ -75,43 +86,22 @@ export default function DashboardShell({ mathData, blocksData, cannonData, daily
           <div className="space-y-10">
             {active === 'all' && <AllSection data={dailyActivity} />}
 
-            {active === 'math' && mathData.totalRounds > 0 && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-3xl bg-white/80 shadow-xl p-6 text-center">
-                    <div className="text-4xl font-extrabold text-emerald-600">{mathData.totalRounds}</div>
-                    <div className="text-sm font-semibold text-gray-500 mt-1">Games Played</div>
-                  </div>
-                  <div className="rounded-3xl bg-white/80 shadow-xl p-6 text-center">
-                    <div className="text-4xl font-extrabold text-teal-600">{mathData.overallAccuracy}%</div>
-                    <div className="text-sm font-semibold text-gray-500 mt-1">Overall Accuracy</div>
-                  </div>
-                </div>
+            {active === 'math' && (mathData.games.length > 0 ? (
+              <GameDashboardSection
+                title="Math"
+                emoji="🧮"
+                data={mathData}
+                colors={{
+                  stats: ['text-purple-600', 'text-blue-600', 'text-pink-500'],
+                  score: '#8b5cf6',
+                  max: '#ec4899',
+                  avg: '#8b5cf6',
+                  area: '#ede9fe',
+                }}
+              />
+            ) : <EmptyTab href="/math" label="Play Math" />)}
 
-                <div className="rounded-3xl bg-white/80 shadow-xl p-6">
-                  <h3 className="text-lg font-bold text-gray-700 mb-6">Daily Accuracy</h3>
-                  <div className="flex items-end gap-3 h-48">
-                    {mathData.dailyStats.map((day) => (
-                      <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
-                        <span className="text-xs font-bold text-gray-600">{day.averageAccuracy}%</span>
-                        <div className="w-full flex items-end" style={{ height: '140px' }}>
-                          <div
-                            className="w-full rounded-t-xl bg-gradient-to-t from-emerald-400 to-teal-400 transition-all duration-500"
-                            style={{ height: `${Math.max(day.averageAccuracy, 4)}%` }}
-                          />
-                        </div>
-                        <div className="text-center">
-                          <div className="text-xs font-semibold text-gray-600">{day.date}</div>
-                          <div className="text-[10px] text-gray-400">{day.gamesPlayed}g</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {active === 'blocks' && (
+            {active === 'blocks' && (blocksData.games.length > 0 ? (
               <GameDashboardSection
                 title="Making 10"
                 emoji="🪵"
@@ -124,9 +114,9 @@ export default function DashboardShell({ mathData, blocksData, cannonData, daily
                   area: '#fecaca',
                 }}
               />
-            )}
+            ) : <EmptyTab href="/blocks" label="Play Making 10" />)}
 
-            {active === 'cannon' && (
+            {active === 'cannon' && (cannonData.games.length > 0 ? (
               <GameDashboardSection
                 title="Number Cannon"
                 emoji="💥"
@@ -139,7 +129,7 @@ export default function DashboardShell({ mathData, blocksData, cannonData, daily
                   area: '#e9d5ff',
                 }}
               />
-            )}
+            ) : <EmptyTab href="/cannon" label="Play Number Cannon" />)}
           </div>
         </div>
       </main>

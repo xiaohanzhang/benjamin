@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, startTransition } from 'react'
-import type { MathQuestion, GamePhase, GameState, QuestionRecord } from '@/types/game'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import type { MathQuestion, GamePhase, GameState, QuestionRecord, DifficultyLevel } from '@/types/game'
 import { QUESTIONS_PER_ROUND } from '@/types/game'
 import { generateQuestion, questionKey } from '@/lib/math/questionGenerator'
 import { adjustDifficulty, DIFFICULTY_LABELS } from '@/lib/math/difficultyManager'
@@ -11,7 +11,7 @@ import {
   demoteAnswer,
   getDueReviewQuestions,
 } from '@/lib/spaced-repetition/leitnerBox'
-import { getGameState, saveGameState, saveRoundResult, saveQuestionRecords } from '@/server/actions/game'
+import { saveMathResult } from '@/server/actions/game'
 import QuestionDisplay from './QuestionDisplay'
 import AnswerOptions from './AnswerOptions'
 import ProgressBar from './ProgressBar'
@@ -23,6 +23,32 @@ import {
   type ConfettiPiece,
 } from './RewardAnimation'
 import QuestionHistory from './QuestionHistory'
+
+const LS_KEY = 'math_game_state'
+
+function loadLocalState(): GameState {
+  if (typeof window === 'undefined') {
+    return { currentDifficulty: 1, currentRound: 0, wrongAnswers: [] }
+  }
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return {
+        currentDifficulty: (parsed.currentDifficulty ?? 1) as DifficultyLevel,
+        currentRound: parsed.currentRound ?? 0,
+        wrongAnswers: parsed.wrongAnswers ?? [],
+      }
+    }
+  } catch { /* ignore parse errors */ }
+  return { currentDifficulty: 1, currentRound: 0, wrongAnswers: [] }
+}
+
+function saveLocalState(state: GameState) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state))
+  } catch { /* ignore quota errors */ }
+}
 
 export default function MathGame() {
   const [gameState, setGameState] = useState<GameState | null>(null)
@@ -52,16 +78,23 @@ export default function MathGame() {
   const roundStartTimeRef = useRef(0)
   const reviewQueueRef = useRef<MathQuestion[]>([])
   const reviewIndicesRef = useRef<Set<number>>(new Set())
+  const correctCountRef = useRef(0)
 
   // Sync refs via effects for setTimeout closure access
   useEffect(() => { questionIndexRef.current = questionIndex }, [questionIndex])
   useEffect(() => { gameStateRef.current = gameState }, [gameState])
   useEffect(() => { roundStartTimeRef.current = roundStartTime }, [roundStartTime])
+  useEffect(() => { correctCountRef.current = correctCount }, [correctCount])
 
-  // Load saved state on mount
+  // Load saved state from localStorage on mount
   useEffect(() => {
-    getGameState().then((saved) => startTransition(() => setGameState(saved)))
+    setGameState(loadLocalState())
   }, [])
+
+  // Persist game state to localStorage whenever it changes
+  useEffect(() => {
+    if (gameState) saveLocalState(gameState)
+  }, [gameState])
 
   const showQuestion = useCallback(
     (state: GameState, qIndex: number, revQueue: MathQuestion[], revIndices: Set<number>) => {
@@ -86,7 +119,17 @@ export default function MathGame() {
   const advanceToNext = useCallback(() => {
     const nextIdx = questionIndexRef.current + 1
     if (nextIdx >= QUESTIONS_PER_ROUND) {
-      setRoundElapsed(Math.round((Date.now() - roundStartTimeRef.current) / 1000))
+      const elapsed = Math.round((Date.now() - roundStartTimeRef.current) / 1000)
+      setRoundElapsed(elapsed)
+      // Save to DB for dashboard
+      const state = gameStateRef.current
+      if (state) {
+        saveMathResult({
+          score: correctCountRef.current,
+          level: state.currentDifficulty,
+          duration: elapsed,
+        })
+      }
       setPhase('roundComplete')
       return
     }
@@ -106,9 +149,6 @@ export default function MathGame() {
     const newState = { ...gameState, currentRound: newRound }
     setGameState(newState)
     gameStateRef.current = newState
-
-    // Persist round increment
-    saveGameState(newState)
 
     const dueReviews = getDueReviewQuestions(gameState.wrongAnswers, newRound, 2)
     const revQueue = dueReviews.map((r) => r.question)
@@ -167,9 +207,7 @@ export default function MathGame() {
           const key = questionKey(currentQuestion)
           setGameState((prev) => {
             if (!prev) return prev
-            const updated = { ...prev, wrongAnswers: promoteAnswer(prev.wrongAnswers, key, prev.currentRound) }
-            saveGameState(updated)
-            return updated
+            return { ...prev, wrongAnswers: promoteAnswer(prev.wrongAnswers, key, prev.currentRound) }
           })
         }
 
@@ -183,16 +221,12 @@ export default function MathGame() {
           const key = questionKey(currentQuestion)
           setGameState((prev) => {
             if (!prev) return prev
-            const updated = { ...prev, wrongAnswers: demoteAnswer(prev.wrongAnswers, key, prev.currentRound) }
-            saveGameState(updated)
-            return updated
+            return { ...prev, wrongAnswers: demoteAnswer(prev.wrongAnswers, key, prev.currentRound) }
           })
         } else {
           setGameState((prev) => {
             if (!prev) return prev
-            const updated = { ...prev, wrongAnswers: addWrongAnswer(prev.wrongAnswers, currentQuestion, prev.currentRound) }
-            saveGameState(updated)
-            return updated
+            return { ...prev, wrongAnswers: addWrongAnswer(prev.wrongAnswers, currentQuestion, prev.currentRound) }
           })
         }
 
@@ -217,14 +251,6 @@ export default function MathGame() {
       QUESTIONS_PER_ROUND
     )
 
-    const roundResult = {
-      round: gameState.currentRound,
-      correct: correctCount,
-      total: QUESTIONS_PER_ROUND,
-      difficulty: gameState.currentDifficulty,
-      timestamp: Date.now(),
-    }
-
     if (leveledUp) {
       const reward = generateRewardData(bestStreak)
       setRewardEncouragement(reward.encouragement)
@@ -233,23 +259,13 @@ export default function MathGame() {
 
     setGameState((prev) => {
       if (!prev) return prev
-      const updated = {
-        ...prev,
-        currentDifficulty: newDifficulty,
-        roundHistory: [...prev.roundHistory, roundResult],
-      }
-      saveGameState(updated)
-      return updated
+      return { ...prev, currentDifficulty: newDifficulty }
     })
-
-    // Persist round result and question records
-    saveRoundResult(roundResult)
-    saveQuestionRecords(gameState.currentRound, questionHistory)
 
     if (leveledUp) {
       setPhase('levelUp')
     }
-  }, [gameState, correctCount, bestStreak, questionHistory])
+  }, [gameState, correctCount, bestStreak])
 
   // Loading
   if (!gameState) {
@@ -271,9 +287,6 @@ export default function MathGame() {
           <p className="text-xl text-gray-500">
             Level: {DIFFICULTY_LABELS[gameState.currentDifficulty]}
           </p>
-          {gameState.roundHistory.length > 0 && (
-            <p className="text-gray-400 mt-1">{gameState.roundHistory.length} rounds done</p>
-          )}
         </div>
 
         <button
