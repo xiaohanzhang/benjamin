@@ -84,3 +84,18 @@ function createGameHistoryTable(name: string) {
 export const mathHistory = createGameHistoryTable('math_history')
 export const blocksHistory = createGameHistoryTable('blocks_history')
 export const cannonHistory = createGameHistoryTable('cannon_history')
+export const phonicsHistory = createGameHistoryTable('phonics_history')
+
+// Phonics word mastery — tracks per-word progress for spaced repetition
+export const phonicsProgress = sqliteTable('phonics_progress', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  word: text('word').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  correct: integer('correct').notNull().default(0),
+  streak: integer('streak').notNull().default(0),
+  mastery: integer('mastery').notNull().default(0), // 0=new, 1=learning, 2=familiar, 3=mastered
+  lastSeen: integer('last_seen').notNull().default(0),
+})

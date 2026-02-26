@@ -1,11 +1,12 @@
-import { getMathDashboardData, getBlocksDashboardData, getCannonDashboardData, getAllDailyActivity } from '@/server/actions/game'
+import { getMathDashboardData, getBlocksDashboardData, getCannonDashboardData, getPhonicsDashboardData, getAllDailyActivity } from '@/server/actions/game'
 import DashboardShell from '@/components/dashboard/DashboardShell'
 
 export default async function DashboardPage() {
-  const [mathData, blocksData, cannonData, dailyActivity] = await Promise.all([
+  const [mathData, blocksData, cannonData, phonicsData, dailyActivity] = await Promise.all([
     getMathDashboardData(),
     getBlocksDashboardData(),
     getCannonDashboardData(),
+    getPhonicsDashboardData(),
     getAllDailyActivity(),
   ])
 
@@ -14,6 +15,7 @@ export default async function DashboardPage() {
       mathData={mathData}
       blocksData={blocksData}
       cannonData={cannonData}
+      phonicsData={phonicsData}
       dailyActivity={dailyActivity}
     />
   )

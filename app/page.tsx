@@ -43,6 +43,13 @@ export default async function Home() {
           href="/cannon"
           gradient="bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-500"
         />
+        <GameCard
+          title="Phonics Fun"
+          description="Learn to read words!"
+          emoji="📖"
+          href="/phonics"
+          gradient="bg-gradient-to-br from-pink-400 via-rose-500 to-orange-500"
+        />
       </div>
     </div>
   )
