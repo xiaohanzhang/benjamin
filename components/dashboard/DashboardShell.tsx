@@ -10,6 +10,7 @@ interface Props {
   mathData: GameDashboardData
   blocksData: GameDashboardData
   cannonData: GameDashboardData
+  phonicsData: GameDashboardData
   dailyActivity: DailyActivity[]
 }
 
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'math', label: 'Math', emoji: '🧮' },
   { id: 'blocks', label: 'Making 10', emoji: '🪵' },
   { id: 'cannon', label: 'Cannon', emoji: '💥' },
+  { id: 'phonics', label: 'Phonics', emoji: '📖' },
 ] as const
 
 function EmptyTab({ href, label }: { href: string; label: string }) {
@@ -31,10 +33,10 @@ function EmptyTab({ href, label }: { href: string; label: string }) {
   )
 }
 
-export default function DashboardShell({ mathData, blocksData, cannonData, dailyActivity }: Props) {
+export default function DashboardShell({ mathData, blocksData, cannonData, phonicsData, dailyActivity }: Props) {
   const [active, setActive] = useState('all')
 
-  const hasAny = mathData.games.length > 0 || blocksData.games.length > 0 || cannonData.games.length > 0
+  const hasAny = mathData.games.length > 0 || blocksData.games.length > 0 || cannonData.games.length > 0 || phonicsData.games.length > 0
 
   if (!hasAny) {
     return (
@@ -51,6 +53,9 @@ export default function DashboardShell({ mathData, blocksData, cannonData, daily
           </Link>
           <Link href="/cannon" className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-500 px-6 py-3 text-white font-bold shadow-lg hover:scale-105 transition-transform">
             Number Cannon
+          </Link>
+          <Link href="/phonics" className="rounded-2xl bg-gradient-to-r from-pink-500 to-orange-500 px-6 py-3 text-white font-bold shadow-lg hover:scale-105 transition-transform">
+            Phonics Fun
           </Link>
         </div>
       </div>
@@ -130,6 +135,21 @@ export default function DashboardShell({ mathData, blocksData, cannonData, daily
                 }}
               />
             ) : <EmptyTab href="/cannon" label="Play Number Cannon" />)}
+
+            {active === 'phonics' && (phonicsData.games.length > 0 ? (
+              <GameDashboardSection
+                title="Phonics Fun"
+                emoji="📖"
+                data={phonicsData}
+                colors={{
+                  stats: ['text-pink-600', 'text-rose-600', 'text-orange-500'],
+                  score: '#ec4899',
+                  max: '#f97316',
+                  avg: '#ec4899',
+                  area: '#fce7f3',
+                }}
+              />
+            ) : <EmptyTab href="/phonics" label="Play Phonics Fun" />)}
           </div>
         </div>
       </main>
