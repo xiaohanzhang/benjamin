@@ -302,11 +302,34 @@ function Ham({ color }: Props) {
   )
 }
 
-// Ram uses a detailed external SVG illustration; color prop not supported
-function Ram(_props: Props) {
+export const COLOR_FILTERS: Record<string, string> = {
+  red: 'invert(16%) sepia(96%) saturate(7482%) hue-rotate(357deg) brightness(97%) contrast(118%)',
+  blue: 'invert(23%) sepia(94%) saturate(2084%) hue-rotate(199deg) brightness(97%) contrast(102%)',
+  green: 'invert(44%) sepia(83%) saturate(1070%) hue-rotate(74deg) brightness(95%) contrast(101%)',
+  brown: 'invert(24%) sepia(77%) saturate(996%) hue-rotate(350deg) brightness(91%) contrast(88%)',
+  black: 'none',
+  pink: 'invert(72%) sepia(21%) saturate(1126%) hue-rotate(289deg) brightness(100%) contrast(97%)',
+  orange: 'invert(63%) sepia(89%) saturate(1371%) hue-rotate(358deg) brightness(101%) contrast(103%)',
+  purple: 'invert(24%) sepia(75%) saturate(3273%) hue-rotate(265deg) brightness(90%) contrast(92%)',
+}
+
+export const COLOR_OPTIONS = Object.keys(COLOR_FILTERS)
+
+function getColorFilter(color?: string): string | undefined {
+  if (!color) return undefined
+  return COLOR_FILTERS[color.toLowerCase()]
+}
+
+// Ram uses an external SVG image; apply CSS filter so sentence_match colors can still work.
+function Ram({ color }: Props) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/ram.svg" alt="ram" className="w-full h-full object-contain" />
+    <img
+      src="/ram.svg"
+      alt="ram"
+      className="w-full h-full object-contain"
+      style={{ filter: getColorFilter(color) }}
+    />
   )
 }
 
