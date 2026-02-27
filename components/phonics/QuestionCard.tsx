@@ -148,7 +148,7 @@ export default function QuestionCard({ question, onAnswer, disabled }: Props) {
               word={option}
               onClick={() => handleSelect(i)}
               state={getButtonState(i)}
-              color={question.type === 'sentence_match' ? question.sentenceColor : undefined}
+              color={question.type === 'sentence_match' ? question.optionColors?.[i] : undefined}
             />
           ) : (
             <WordButton

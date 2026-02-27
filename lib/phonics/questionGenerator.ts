@@ -17,7 +17,8 @@ export interface Question {
   options: string[]           // 3 word choices (or 3 picture choices for read_pick)
   correctIndex: number
   sentence?: string           // for sentence_match: "The ___ is red."
-  sentenceColor?: string      // color for sentence_match
+  sentenceColor?: string      // color for sentence_match (correct answer's color)
+  optionColors?: string[]     // per-option colors for sentence_match (only correct matches sentenceColor)
 }
 
 const COLORS_FOR_SENTENCES = ['red', 'blue', 'green', 'brown', 'black', 'pink', 'orange', 'purple']
@@ -163,15 +164,24 @@ function generateQuestion(
 
   // sentence_match: "The ___ is [color]."
   const color = pickRandom(COLORS_FOR_SENTENCES)
+  const otherColors = COLORS_FOR_SENTENCES.filter(c => c !== color)
   const distractors = pickDistractors(targetWord, allWords, true)
   const options = shuffle([targetWord, ...distractors])
+  const correctIdx = options.indexOf(targetWord)
+  // Assign distinct colors per option: correct gets sentenceColor, distractors get other colors
+  const optionColors = options.map((_, i) => {
+    if (i === correctIdx) return color
+    const idx = i < correctIdx ? i : i - 1
+    return otherColors[idx % otherColors.length]
+  })
   return {
     type,
     targetWord,
     options,
-    correctIndex: options.indexOf(targetWord),
+    correctIndex: correctIdx,
     sentence: `The ___ is ${color}.`,
     sentenceColor: color,
+    optionColors,
   }
 }
 
