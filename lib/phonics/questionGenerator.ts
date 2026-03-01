@@ -117,7 +117,7 @@ function getQuestionTypes(level: number): QuestionType[] {
     case 1: return ['picture_match']
     case 2: return ['picture_match', 'read_pick']
     case 3: return ['picture_match', 'read_pick', 'sentence_match']
-    default: return ['picture_match', 'read_pick', 'sentence_match']
+    default: return ['picture_match', 'read_pick'] // no colour questions above level 3
   }
 }
 
