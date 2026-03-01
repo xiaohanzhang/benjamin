@@ -58,13 +58,14 @@ export const verificationTokens = sqliteTable(
   ]
 );
  
-// Math game local state (difficulty/round) — kept for reference, no longer written by app
+// Shared game state per user — phonicsLevel is actively used; math fields kept for reference
 export const gameState = sqliteTable('game_state', {
   userId: text('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
   currentDifficulty: integer('current_difficulty').notNull().default(1),
   currentRound: integer('current_round').notNull().default(0),
+  phonicsLevel: integer('phonics_level').notNull().default(1),
 })
 
 // Game history tables — scoped by userId, shared schema

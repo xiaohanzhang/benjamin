@@ -1,44 +1,22 @@
 /**
  * Main phonics game component.
  * Manages game state, round progression, difficulty levels, and DB sync.
- * localStorage stores difficulty level; word progress syncs via server actions.
+ * Both level and word progress are persisted via server actions (no localStorage).
  */
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useTransition } from 'react'
 import Link from 'next/link'
-import { getPhonicsProgress, updateWordProgress, savePhonicsResult } from '@/server/actions/game'
+import { getPhonicsProgress, getPhonicsLevel, savePhonicsLevel, updateWordProgress, savePhonicsResult } from '@/server/actions/game'
 import type { WordProgress } from '@/server/actions/game'
 import { generateRound, type Question } from '@/lib/phonics/questionGenerator'
 import { ConfettiOverlay, Encouragement, generateRewardData, type ConfettiPiece } from '@/components/math/RewardAnimation'
 import QuestionCard from './QuestionCard'
 
-const LS_KEY = 'phonics_game_state'
 const QUESTIONS_PER_ROUND = 10
 const PROMOTE_THRESHOLD = 0.8   // 80% to level up
 const DEMOTE_THRESHOLD = 0.3    // 30% to level down
-const MAX_LEVEL = 4
-
-interface LocalState {
-  level: number
-}
-
-function loadLocalState(): LocalState {
-  if (typeof window === 'undefined') return { level: 1 }
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      return { level: Math.max(1, Math.min(MAX_LEVEL, parsed.level ?? 1)) }
-    }
-  } catch { /* ignore */ }
-  return { level: 1 }
-}
-
-function saveLocalState(state: LocalState) {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(LS_KEY, JSON.stringify(state))
-}
+const MAX_LEVEL = 10
 
 type Phase = 'loading' | 'ready' | 'playing' | 'result'
 
@@ -61,19 +39,17 @@ export default function PhonicsGame() {
   const startTimeRef = useRef(0)
   const [isPending, startTransition] = useTransition()
 
-  // Load progress from server on mount
+  // Load level + word progress from server on mount
   useEffect(() => {
-    const state = loadLocalState()
-    setLevel(state.level)
-
-    getPhonicsProgress().then(progress => {
-      const map = new Map<string, WordProgress>()
-      for (const p of progress) map.set(p.word, p)
-      progressRef.current = map
-      setPhase('ready')
-    }).catch(() => {
-      setPhase('ready')
-    })
+    Promise.all([getPhonicsLevel(), getPhonicsProgress()])
+      .then(([savedLevel, progress]) => {
+        setLevel(savedLevel)
+        const map = new Map<string, WordProgress>()
+        for (const p of progress) map.set(p.word, p)
+        progressRef.current = map
+        setPhase('ready')
+      })
+      .catch(() => setPhase('ready'))
   }, [])
 
   const startRound = useCallback(() => {
@@ -173,7 +149,7 @@ export default function PhonicsGame() {
           newLevel = level - 1
         }
         setLevel(newLevel)
-        saveLocalState({ level: newLevel })
+        savePhonicsLevel(newLevel)
         setPhase('result')
       }, 500)
     } else {
@@ -302,8 +278,8 @@ export default function PhonicsGame() {
       </div>
 
       {/* Level change indicator */}
-      {accuracy >= PROMOTE_THRESHOLD * 100 && level > loadLocalState().level - 1 && level <= MAX_LEVEL && (
-        <p className="text-green-600 font-bold text-lg">Level Up!</p>
+      {accuracy >= PROMOTE_THRESHOLD * 100 && level < MAX_LEVEL && (
+        <p className="text-green-600 font-bold text-lg">Level Up! ↑ Level {level}</p>
       )}
 
       <div className="flex gap-4 mt-4">

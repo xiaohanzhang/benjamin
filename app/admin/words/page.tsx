@@ -8,6 +8,12 @@ const LEVEL_LABELS: Record<number, string> = {
   2: "Level 2 — Short 'a' (second set)",
   3: "Level 3 — Short 'a' (third set)",
   4: "Level 4 — Short 'u'",
+  5: "Level 5 — Short 'o'",
+  6: "Level 6 — Short 'i'",
+  7: "Level 7 — Short 'e'",
+  8: "Level 8 — Mixed short vowels",
+  9: "Level 9 — Blends (CCVC/CVCC)",
+  10: 'Level 10 — Digraphs',
 }
 
 const MASTERY_LABEL = ['New', 'Learning', 'Familiar', 'Mastered'] as const

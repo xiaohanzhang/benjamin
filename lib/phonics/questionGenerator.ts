@@ -5,7 +5,7 @@
  */
 
 import type { WordProgress } from '@/server/actions/game'
-import { getWordsForLevel, type PhonicsWord } from './words'
+import { getWordsForLevel } from './words'
 import { illustrations } from './illustrations'
 
 // Question types
@@ -46,68 +46,67 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
+// Base appearance weight by mastery level.
+// learning (1) appears most; mastered (3) appears rarely but still gets review.
+const MASTERY_WEIGHTS = [4, 6, 3, 1] // indexed by mastery 0-3
+
 /**
- * Select words for a round based on mastery data.
- * Priority:
- *   1. 2-3 review words (mastery 1-2, oldest last_seen first)
- *   2. 1-2 new words (mastery 0, introduce gradually)
- *   3. Fill remaining with practice words (all seen, weighted by mastery)
+ * Compute appearance weight for a word.
+ * Higher mastery and higher streak both reduce weight so well-known words
+ * appear less often and harder/newer words get more repetition.
+ */
+function wordWeight(prog: WordProgress | undefined): number {
+  const mastery = prog?.mastery ?? 0
+  const streak = prog?.streak ?? 0
+  const base = MASTERY_WEIGHTS[Math.min(mastery, 3)]
+  // Exponential decay: each streak point multiplies weight by 0.8
+  return base * Math.pow(0.8, streak)
+}
+
+/**
+ * Weighted sampling without replacement.
+ * Zero-weight words are excluded. If all weights are zero (every word
+ * has a very high streak), falls back to uniform sampling so the round
+ * can still be filled.
+ * Cycles through the pool if QUESTIONS_PER_ROUND > available words.
+ */
+function weightedSample(words: string[], weights: number[], n: number): string[] {
+  if (words.length === 0) return []
+
+  const result: string[] = []
+  const pool = [...words]
+  const poolW = [...weights]
+
+  while (result.length < n) {
+    if (pool.length === 0) {
+      pool.push(...activeWords)
+      poolW.push(...activeWeights)
+    }
+    const total = poolW.reduce((a, b) => a + b, 0)
+    let r = Math.random() * total
+    let idx = pool.length - 1
+    for (let i = 0; i < pool.length; i++) {
+      r -= poolW[i]
+      if (r <= 0) { idx = i; break }
+    }
+    result.push(pool[idx])
+    pool.splice(idx, 1)
+    poolW.splice(idx, 1)
+  }
+  return result
+}
+
+/**
+ * Select words for a round using mastery-weighted sampling.
+ * Words with lower mastery and lower streak appear more frequently.
  */
 export function selectWordsForRound(
   level: number,
   progressMap: Map<string, WordProgress>,
 ): string[] {
   const available = getWordsForLevel(level).map(w => w.word)
-
-  const newWords: string[] = []
-  const reviewWords: { word: string; lastSeen: number; mastery: number }[] = []
-  const practiceWords: { word: string; mastery: number }[] = []
-
-  for (const word of available) {
-    const prog = progressMap.get(word)
-    if (!prog || prog.mastery === 0) {
-      newWords.push(word)
-    } else if (prog.mastery <= 2) {
-      reviewWords.push({ word, lastSeen: prog.lastSeen, mastery: prog.mastery })
-    } else {
-      practiceWords.push({ word, mastery: prog.mastery })
-    }
-  }
-
-  // Sort review words by oldest first
-  reviewWords.sort((a, b) => a.lastSeen - b.lastSeen)
-
-  const selected: string[] = []
-
-  // 1. Review words (2-3)
-  const reviewCount = Math.min(reviewWords.length, Math.random() < 0.5 ? 2 : 3)
-  for (let i = 0; i < reviewCount; i++) {
-    selected.push(reviewWords[i].word)
-  }
-
-  // 2. New words (1-2)
-  const newCount = Math.min(newWords.length, Math.random() < 0.5 ? 1 : 2)
-  const chosenNew = pick(newWords, newCount)
-  selected.push(...chosenNew)
-
-  // 3. Fill remainder with practice words (weighted by lower mastery = more likely)
-  const remaining = QUESTIONS_PER_ROUND - selected.length
-  const allAvailableForPractice = [
-    ...reviewWords.slice(reviewCount).map(r => r.word),
-    ...practiceWords.map(p => p.word),
-    ...newWords.filter(w => !chosenNew.includes(w)),
-  ]
-
-  if (remaining > 0 && allAvailableForPractice.length > 0) {
-    selected.push(...pick(allAvailableForPractice, Math.min(remaining, allAvailableForPractice.length)))
-  }
-
-  // If we still don't have enough, repeat some already selected
-  while (selected.length < QUESTIONS_PER_ROUND && available.length > 0) {
-    selected.push(pickRandom(available))
-  }
-
-  return shuffle(selected)
+  const weights = available.map(w => wordWeight(progressMap.get(w)))
+  return shuffle(weightedSample(available, weights, QUESTIONS_PER_ROUND))
 }
 
 /**

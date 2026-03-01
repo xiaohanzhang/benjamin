@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/server/db'
-import { mathHistory, blocksHistory, cannonHistory, phonicsHistory, phonicsProgress } from '@/server/db/schema'
+import { mathHistory, blocksHistory, cannonHistory, phonicsHistory, phonicsProgress, gameState } from '@/server/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { requireUserId } from '@/server/auth-helpers'
 
@@ -103,6 +103,19 @@ export async function savePhonicsResult(r: { score: number; level: number; durat
 }
 export async function getPhonicsDashboardData() {
   return getGameDashboardData(phonicsHistory)
+}
+
+export async function getPhonicsLevel(): Promise<number> {
+  const userId = await requireUserId()
+  const rows = await db.select().from(gameState).where(eq(gameState.userId, userId))
+  return rows[0]?.phonicsLevel ?? 1
+}
+
+export async function savePhonicsLevel(level: number): Promise<void> {
+  const userId = await requireUserId()
+  await db.insert(gameState)
+    .values({ userId, phonicsLevel: level, currentDifficulty: 1, currentRound: 0 })
+    .onConflictDoUpdate({ target: gameState.userId, set: { phonicsLevel: level } })
 }
 
 // -- Phonics word mastery --
