@@ -302,11 +302,62 @@ function Ham({ color }: Props) {
   )
 }
 
-// Ram uses a detailed external SVG illustration; color prop not supported
-function Ram(_props: Props) {
+export const COLOR_FILTERS: Record<string, string> = {
+  red: 'invert(16%) sepia(96%) saturate(7482%) hue-rotate(357deg) brightness(97%) contrast(118%)',
+  blue: 'invert(23%) sepia(94%) saturate(2084%) hue-rotate(199deg) brightness(97%) contrast(102%)',
+  green: 'invert(44%) sepia(83%) saturate(1070%) hue-rotate(74deg) brightness(95%) contrast(101%)',
+  brown: 'invert(24%) sepia(77%) saturate(996%) hue-rotate(350deg) brightness(91%) contrast(88%)',
+  black: 'none',
+  pink: 'invert(72%) sepia(21%) saturate(1126%) hue-rotate(289deg) brightness(100%) contrast(97%)',
+  orange: 'invert(63%) sepia(89%) saturate(1371%) hue-rotate(358deg) brightness(101%) contrast(103%)',
+  purple: 'invert(24%) sepia(75%) saturate(3273%) hue-rotate(265deg) brightness(90%) contrast(92%)',
+}
+
+export const COLOR_OPTIONS = Object.keys(COLOR_FILTERS)
+
+function getColorFilter(color?: string): string | undefined {
+  if (!color) return undefined
+  return COLOR_FILTERS[color.toLowerCase()]
+}
+
+function PrimaryPhonicsImage({ word, color }: { word: string; color?: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/ram.svg" alt="ram" className="w-full h-full object-contain" />
+    <img
+      src={`/primary_phonics/${word}.png`}
+      alt={word}
+      className="w-full h-full object-contain"
+      style={{ filter: getColorFilter(color) }}
+    />
+  )
+}
+
+const PRIMARY_PHONICS_IMAGE_WORDS = [
+  'bed', 'bib', 'big', 'box', 'chat', 'chin', 'clap', 'cot', 'crab', 'dig',
+  'dog', 'drum', 'duck', 'fin', 'flag', 'fog', 'frog', 'hem', 'hen', 'hit',
+  'hop', 'jet', 'jump', 'kid', 'leg', 'lid', 'lip', 'log', 'milk', 'mop',
+  'net', 'nod', 'peg', 'pen', 'pet', 'pig', 'pin', 'pot', 'red', 'ring',
+  'rod', 'ship', 'shop', 'sit', 'sled', 'sob', 'spin', 'stop', 'ten', 'top',
+  'tub', 'vet', 'web', 'whip', 'zip',
+] as const
+
+const primaryPhonicsIllustrations = Object.fromEntries(
+  PRIMARY_PHONICS_IMAGE_WORDS.map(word => [
+    word,
+    ({ color }: Props) => <PrimaryPhonicsImage word={word} color={color} />,
+  ]),
+) as Record<(typeof PRIMARY_PHONICS_IMAGE_WORDS)[number], (props: Props) => React.JSX.Element>
+
+// Ram uses an external SVG image; apply CSS filter so sentence_match colors can still work.
+function Ram({ color }: Props) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/ram.svg"
+      alt="ram"
+      className="w-full h-full object-contain"
+      style={{ filter: getColorFilter(color) }}
+    />
   )
 }
 
@@ -705,6 +756,20 @@ function Gum({ color }: Props) {
   )
 }
 
+function Hot({ color }: Props) {
+  return (
+    <Svg color={color}>
+      <rect x="40" y="22" width="20" height="52" rx="10" />
+      <circle cx="50" cy="74" r="10" />
+      <line x1="50" y1="10" x2="50" y2="18" />
+      <line x1="30" y1="20" x2="36" y2="24" />
+      <line x1="70" y1="20" x2="64" y2="24" />
+      <line x1="30" y1="84" x2="37" y2="80" />
+      <line x1="70" y1="84" x2="63" y2="80" />
+    </Svg>
+  )
+}
+
 // Map of word → illustration component
 export const illustrations: Record<string, (props: Props) => React.JSX.Element> = {
   cat: Cat,
@@ -743,4 +808,6 @@ export const illustrations: Record<string, (props: Props) => React.JSX.Element> 
   sun: Sun,
   run: Run,
   gum: Gum,
+  hot: Hot,
+  ...primaryPhonicsIllustrations,
 }

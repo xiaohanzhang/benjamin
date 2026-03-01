@@ -1,5 +1,6 @@
+import Link from 'next/link'
 import { WORD_BANK } from '@/lib/phonics/words'
-import { illustrations } from '@/lib/phonics/illustrations'
+import { COLOR_OPTIONS, illustrations } from '@/lib/phonics/illustrations'
 import { getPhonicsProgress } from '@/server/actions/game'
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -7,6 +8,12 @@ const LEVEL_LABELS: Record<number, string> = {
   2: "Level 2 — Short 'a' (second set)",
   3: "Level 3 — Short 'a' (third set)",
   4: "Level 4 — Short 'u'",
+  5: "Level 5 — Short 'o'",
+  6: "Level 6 — Short 'i'",
+  7: "Level 7 — Short 'e'",
+  8: "Level 8 — Mixed short vowels",
+  9: "Level 9 — Blends (CCVC/CVCC)",
+  10: 'Level 10 — Digraphs',
 }
 
 const MASTERY_LABEL = ['New', 'Learning', 'Familiar', 'Mastered'] as const
@@ -17,7 +24,28 @@ const MASTERY_STYLE = [
   'bg-green-50 text-green-700 border-green-300',
 ] as const
 
-export default async function AdminWordsPage() {
+const COLOR_LABELS: Record<string, string> = {
+  black: 'Black',
+  red: 'Red',
+  blue: 'Blue',
+  green: 'Green',
+  brown: 'Brown',
+  pink: 'Pink',
+  orange: 'Orange',
+  purple: 'Purple',
+}
+
+const FALLBACK_COLOR = 'black'
+
+export default async function AdminWordsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ color?: string }>
+}) {
+  const params = (await searchParams) ?? {}
+  const rawColor = typeof params.color === 'string' ? params.color.toLowerCase() : FALLBACK_COLOR
+  const selectedColor = COLOR_OPTIONS.includes(rawColor) ? rawColor : FALLBACK_COLOR
+
   const progress = await getPhonicsProgress()
   const progressMap = new Map(progress.map(p => [p.word, p]))
 
@@ -44,6 +72,33 @@ export default async function AdminWordsPage() {
         })}
       </div>
 
+      {/* Color switcher for all word illustrations */}
+      <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+        <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">
+          Word color
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {COLOR_OPTIONS.map(color => {
+            const active = color === selectedColor
+            return (
+              <Link
+                key={color}
+                href={`/admin/words?color=${color}`}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <span
+                  className="inline-block h-3 w-3 rounded-full border border-black/10"
+                  style={{ backgroundColor: color }}
+                />
+                {COLOR_LABELS[color] ?? color}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Word groups by level */}
       {Array.from(byLevel.entries()).map(([level, words]) => (
         <section key={level}>
@@ -64,7 +119,7 @@ export default async function AdminWordsPage() {
                   {/* illustration */}
                   <div className="w-14 h-14 flex items-center justify-center">
                     {Illust
-                      ? <Illust />
+                      ? <Illust color={selectedColor} />
                       : <span className="text-3xl text-gray-200">?</span>}
                   </div>
 
