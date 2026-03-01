@@ -79,8 +79,8 @@ function weightedSample(words: string[], weights: number[], n: number): string[]
 
   while (result.length < n) {
     if (pool.length === 0) {
-      pool.push(...activeWords)
-      poolW.push(...activeWeights)
+      pool.push(...words)
+      poolW.push(...weights)
     }
     const total = poolW.reduce((a, b) => a + b, 0)
     let r = Math.random() * total
