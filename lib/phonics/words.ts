@@ -1,23 +1,28 @@
 /**
  * Phonics word bank organized by difficulty level.
- * Based on Primary Phonics progression (CVC → blends/digraphs).
+ * Based on Primary Phonics progression (CVC → blends/digraphs → long vowels → vowel teams).
  */
 
 export interface PhonicsWord {
   word: string
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
 }
 
-// Level 1: short 'a', first set
-// Level 2: short 'a', second set
-// Level 3: short 'a', third set
-// Level 4: short 'u'
-// Level 5: short 'o'
-// Level 6: short 'i'
-// Level 7: short 'e'
-// Level 8: mixed short vowels
-// Level 9: consonant blends (CCVC/CVCC)
-// Level 10: digraphs
+// Level 1:  short 'a', first set
+// Level 2:  short 'a', second set
+// Level 3:  short 'a', third set
+// Level 4:  short 'u'
+// Level 5:  short 'o'
+// Level 6:  short 'i'
+// Level 7:  short 'e'
+// Level 8:  mixed short vowels
+// Level 9:  consonant blends (CCVC/CVCC)
+// Level 10: digraphs (sh, ch, th, wh, ng, ck)
+// Level 11: long 'a' — silent-e (CVCe)
+// Level 12: long 'i' and long 'o' — silent-e
+// Level 13: long 'u' and 'e' — silent-e + ee/ea vowel teams
+// Level 14: vowel teams (ai/ay, oa, ow/ou)
+// Level 15: r-controlled vowels (ar, or, er/ir/ur)
 
 export const WORD_BANK: PhonicsWord[] = [
   // Level 1
@@ -114,14 +119,126 @@ export const WORD_BANK: PhonicsWord[] = [
   { word: 'drum', level: 9 },
   { word: 'jump', level: 9 },
   { word: 'milk', level: 9 },
-  // Level 10
+  // Level 10 — digraphs (sh, ch, th, wh, ng, ck)
   { word: 'ship', level: 10 },
   { word: 'shop', level: 10 },
+  { word: 'shut', level: 10 },
+  { word: 'shed', level: 10 },
+  { word: 'fish', level: 10 },
+  { word: 'dish', level: 10 },
   { word: 'chat', level: 10 },
   { word: 'chin', level: 10 },
+  { word: 'chip', level: 10 },
+  { word: 'chop', level: 10 },
+  { word: 'much', level: 10 },
+  { word: 'thin', level: 10 },
+  { word: 'that', level: 10 },
+  { word: 'with', level: 10 },
   { word: 'whip', level: 10 },
   { word: 'ring', level: 10 },
+  { word: 'sing', level: 10 },
   { word: 'duck', level: 10 },
+  { word: 'back', level: 10 },
+  { word: 'kick', level: 10 },
+  // Level 11 — long 'a' silent-e (CVCe)
+  { word: 'cake', level: 11 },
+  { word: 'bake', level: 11 },
+  { word: 'lake', level: 11 },
+  { word: 'make', level: 11 },
+  { word: 'rake', level: 11 },
+  { word: 'came', level: 11 },
+  { word: 'game', level: 11 },
+  { word: 'name', level: 11 },
+  { word: 'same', level: 11 },
+  { word: 'gate', level: 11 },
+  { word: 'late', level: 11 },
+  { word: 'rate', level: 11 },
+  { word: 'cave', level: 11 },
+  { word: 'wave', level: 11 },
+  { word: 'face', level: 11 },
+  { word: 'lace', level: 11 },
+  { word: 'race', level: 11 },
+  { word: 'pace', level: 11 },
+  // Level 12 — long 'i' and long 'o' silent-e
+  { word: 'bike', level: 12 },
+  { word: 'like', level: 12 },
+  { word: 'hike', level: 12 },
+  { word: 'bite', level: 12 },
+  { word: 'kite', level: 12 },
+  { word: 'site', level: 12 },
+  { word: 'hide', level: 12 },
+  { word: 'ride', level: 12 },
+  { word: 'mine', level: 12 },
+  { word: 'pine', level: 12 },
+  { word: 'nose', level: 12 },
+  { word: 'note', level: 12 },
+  { word: 'bone', level: 12 },
+  { word: 'cone', level: 12 },
+  { word: 'hope', level: 12 },
+  { word: 'rope', level: 12 },
+  { word: 'mole', level: 12 },
+  { word: 'pole', level: 12 },
+  // Level 13 — long 'u'/'e' silent-e + ee/ea vowel teams
+  { word: 'tube', level: 13 },
+  { word: 'cute', level: 13 },
+  { word: 'mule', level: 13 },
+  { word: 'fuse', level: 13 },
+  { word: 'tree', level: 13 },
+  { word: 'free', level: 13 },
+  { word: 'bee', level: 13 },
+  { word: 'see', level: 13 },
+  { word: 'feet', level: 13 },
+  { word: 'meet', level: 13 },
+  { word: 'sea', level: 13 },
+  { word: 'tea', level: 13 },
+  { word: 'pea', level: 13 },
+  { word: 'read', level: 13 },
+  { word: 'bead', level: 13 },
+  { word: 'meal', level: 13 },
+  { word: 'seal', level: 13 },
+  { word: 'leaf', level: 13 },
+  // Level 14 — vowel teams (ai/ay, oa, ow/ou)
+  { word: 'rain', level: 14 },
+  { word: 'pain', level: 14 },
+  { word: 'tail', level: 14 },
+  { word: 'mail', level: 14 },
+  { word: 'sail', level: 14 },
+  { word: 'wait', level: 14 },
+  { word: 'day', level: 14 },
+  { word: 'say', level: 14 },
+  { word: 'play', level: 14 },
+  { word: 'stay', level: 14 },
+  { word: 'coat', level: 14 },
+  { word: 'boat', level: 14 },
+  { word: 'goat', level: 14 },
+  { word: 'road', level: 14 },
+  { word: 'toad', level: 14 },
+  { word: 'snow', level: 14 },
+  { word: 'grow', level: 14 },
+  { word: 'flow', level: 14 },
+  { word: 'out', level: 14 },
+  { word: 'loud', level: 14 },
+  // Level 15 — r-controlled vowels (ar, or, er/ir/ur)
+  { word: 'car', level: 15 },
+  { word: 'bar', level: 15 },
+  { word: 'far', level: 15 },
+  { word: 'jar', level: 15 },
+  { word: 'star', level: 15 },
+  { word: 'barn', level: 15 },
+  { word: 'farm', level: 15 },
+  { word: 'fort', level: 15 },
+  { word: 'corn', level: 15 },
+  { word: 'horn', level: 15 },
+  { word: 'born', level: 15 },
+  { word: 'form', level: 15 },
+  { word: 'her', level: 15 },
+  { word: 'fern', level: 15 },
+  { word: 'bird', level: 15 },
+  { word: 'girl', level: 15 },
+  { word: 'stir', level: 15 },
+  { word: 'burn', level: 15 },
+  { word: 'turn', level: 15 },
+  { word: 'hurt', level: 15 },
 ]
 
 export function getWordsForLevel(maxLevel: number): PhonicsWord[] {

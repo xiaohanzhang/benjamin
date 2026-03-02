@@ -13,10 +13,10 @@ import { generateRound, type Question } from '@/lib/phonics/questionGenerator'
 import { ConfettiOverlay, Encouragement, generateRewardData, type ConfettiPiece } from '@/components/math/RewardAnimation'
 import QuestionCard from './QuestionCard'
 
-const QUESTIONS_PER_ROUND = 10
+const QUESTIONS_PER_ROUND = 20
 const PROMOTE_THRESHOLD = 0.8   // 80% to level up
 const DEMOTE_THRESHOLD = 0.3    // 30% to level down
-const MAX_LEVEL = 10
+const MAX_LEVEL = 15
 
 type Phase = 'loading' | 'ready' | 'playing' | 'result'
 
