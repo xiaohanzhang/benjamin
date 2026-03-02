@@ -22,7 +22,7 @@ export interface Question {
 }
 
 const COLORS_FOR_SENTENCES = ['red', 'blue', 'green', 'brown', 'black', 'pink', 'orange', 'purple']
-const QUESTIONS_PER_ROUND = 10
+const QUESTIONS_PER_ROUND = 20
 
 // Words that have illustrations (only use these for picture-related questions)
 function hasIllustration(word: string): boolean {

@@ -3,6 +3,7 @@
  * Each component renders a black-outline illustration that can be colored via the `color` prop.
  * Style matches the Primary Phonics workbook's simple, child-friendly aesthetic.
  */
+import { PRIMARY_PHONICS_IMAGE_WORDS } from './primaryPhonicsImageWords'
 
 interface Props {
   color?: string
@@ -331,15 +332,6 @@ function PrimaryPhonicsImage({ word, color }: { word: string; color?: string }) 
     />
   )
 }
-
-const PRIMARY_PHONICS_IMAGE_WORDS = [
-  'bed', 'bib', 'big', 'box', 'chat', 'chin', 'clap', 'cot', 'crab', 'dig',
-  'dog', 'drum', 'duck', 'fin', 'flag', 'fog', 'frog', 'hem', 'hen', 'hit',
-  'hop', 'jet', 'jump', 'kid', 'leg', 'lid', 'lip', 'log', 'milk', 'mop',
-  'net', 'nod', 'peg', 'pen', 'pet', 'pig', 'pin', 'pot', 'red', 'ring',
-  'rod', 'ship', 'shop', 'sit', 'sled', 'sob', 'spin', 'stop', 'ten', 'top',
-  'tub', 'vet', 'web', 'whip', 'zip',
-] as const
 
 const primaryPhonicsIllustrations = Object.fromEntries(
   PRIMARY_PHONICS_IMAGE_WORDS.map(word => [
@@ -808,6 +800,5 @@ export const illustrations: Record<string, (props: Props) => React.JSX.Element> 
   sun: Sun,
   run: Run,
   gum: Gum,
-  hot: Hot,
   ...primaryPhonicsIllustrations,
 }

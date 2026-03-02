@@ -13,7 +13,12 @@ const LEVEL_LABELS: Record<number, string> = {
   7: "Level 7 — Short 'e'",
   8: "Level 8 — Mixed short vowels",
   9: "Level 9 — Blends (CCVC/CVCC)",
-  10: 'Level 10 — Digraphs',
+  10: 'Level 10 — Digraphs (sh/ch/th/wh/ng/ck)',
+  11: "Level 11 — Long 'a' silent-e",
+  12: "Level 12 — Long 'i' and 'o' silent-e",
+  13: "Level 13 — Long 'u'/'e' + ee/ea",
+  14: 'Level 14 — Vowel teams (ai/ay, oa, ow/ou)',
+  15: 'Level 15 — R-controlled vowels (ar/or/er/ir/ur)',
 }
 
 const MASTERY_LABEL = ['New', 'Learning', 'Familiar', 'Mastered'] as const
