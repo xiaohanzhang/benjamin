@@ -800,6 +800,5 @@ export const illustrations: Record<string, (props: Props) => React.JSX.Element> 
   sun: Sun,
   run: Run,
   gum: Gum,
-  hot: Hot,
   ...primaryPhonicsIllustrations,
 }
